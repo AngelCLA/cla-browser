@@ -27,6 +27,14 @@ npm start
 - Zoom de la pestaña activa por teclado y con `Ctrl/Cmd + rueda`.
 - Controles personalizados para minimizar, maximizar/restaurar y cerrar.
 - Scroll oscuro de CLA Browser cuando el sitio no aporta uno propio. Las reglas del sitio prevalecen sobre el estilo predeterminado.
+- Marcadores persistentes: la estrella añade o quita la página activa y la barra permite abrirlos.
+- El listado editable de marcadores está en `bookmarks.json` en la raíz del proyecto. Es un arreglo de objetos con `title` y `url`; `favicon` se completa automáticamente.
+
+```json
+[
+  { "title": "Ejemplo", "url": "https://ejemplo.com" }
+]
+```
 
 ## Controles
 
@@ -55,6 +63,8 @@ El zoom se aplica exclusivamente a la pestaña activa y cuenta con límites para
 | `Ctrl/Cmd + rueda` | Ampliar o reducir zoom |
 | `F11` | Pantalla completa de contenido, sin barra superior |
 | `Ctrl/Cmd + P` | Imprimir la pestaña activa |
+| `Ctrl/Cmd + D` | Añadir o quitar un marcador de la página activa |
+| `Ctrl/Cmd + Shift + B` | Mostrar u ocultar la barra de marcadores |
 | `Ctrl/Cmd + Shift + I` o `F12` | Alternar herramientas de desarrollador |
 
 ## Arquitectura

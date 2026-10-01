@@ -1,8 +1,11 @@
 const { app, BaseWindow, WebContentsView, clipboard, ipcMain, Menu, net } = require('electron');
+const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
 const TOOLBAR_HEIGHT = 76;
+const BOOKMARKS_BAR_HEIGHT = 32;
+const MAX_FAVICON_BYTES = 256 * 1024;
 const SOURCE_DIR = path.join(__dirname, '..');
 const ASSETS_DIR = path.join(SOURCE_DIR, 'assets');
 const PRELOAD_DIR = path.join(SOURCE_DIR, 'preload');
@@ -14,10 +17,14 @@ let toolbarView;
 let activeTabId;
 let contentFullscreen = false;
 let toolbarSuggestionHeight = 0;
+let bookmarksVisible = true;
+let bookmarksBarMenuItem;
 let nextTabId = 1;
 const tabs = [];
 const closedTabs = [];
 const recentPages = [];
+let bookmarks = [];
+let legacyBookmarks = [];
 
 const ADDRESS_OVERLAY_SCRIPT = `
   (() => {
@@ -113,7 +120,62 @@ function tabState() {
   return {
     activeTabId,
     tabs: tabs.map(({ id, title, url, loading }) => ({ id, title, url, loading })),
+    bookmarks,
+    bookmarksVisible,
   };
+}
+
+function browserDataPath() {
+  return path.join(app.getPath('userData'), 'browser-data.json');
+}
+
+function bookmarksPath() {
+  return path.join(app.getAppPath(), 'bookmarks.json');
+}
+
+function normalizeBookmarks(data) {
+  return Array.isArray(data)
+    ? data
+      .filter((bookmark) => typeof bookmark?.url === 'string' && bookmark.url.length > 0)
+      .slice(0, 100)
+      .map((bookmark) => ({
+        url: bookmark.url,
+        title: typeof bookmark.title === 'string' ? bookmark.title : bookmark.url,
+        favicon: typeof bookmark.favicon === 'string' ? bookmark.favicon : '',
+      }))
+    : [];
+}
+
+function loadBrowserData() {
+  try {
+    const data = JSON.parse(fs.readFileSync(browserDataPath(), 'utf8'));
+    bookmarksVisible = typeof data.bookmarksVisible === 'boolean' ? data.bookmarksVisible : true;
+    legacyBookmarks = normalizeBookmarks(data.bookmarks);
+  } catch {}
+}
+
+function loadBookmarks() {
+  try {
+    const data = JSON.parse(fs.readFileSync(bookmarksPath(), 'utf8'));
+    bookmarks = normalizeBookmarks(data);
+    if (!bookmarks.length && legacyBookmarks.length) {
+      bookmarks = legacyBookmarks;
+      saveBookmarks();
+      saveBrowserData();
+    }
+  } catch {}
+}
+
+function saveBrowserData() {
+  try {
+    fs.writeFileSync(browserDataPath(), JSON.stringify({ bookmarksVisible }));
+  } catch {}
+}
+
+function saveBookmarks() {
+  try {
+    fs.writeFileSync(bookmarksPath(), `${JSON.stringify(bookmarks, null, 2)}\n`);
+  } catch {}
 }
 
 function recordVisitedPage(url, title) {
@@ -162,6 +224,45 @@ function notifyWindowState() {
   }
 }
 
+function setBookmarksVisible(visible) {
+  bookmarksVisible = visible;
+  if (bookmarksBarMenuItem) bookmarksBarMenuItem.checked = visible;
+  saveBrowserData();
+  layoutViews();
+  notifyToolbar();
+}
+
+function toggleBookmarksBar() {
+  setBookmarksVisible(!bookmarksVisible);
+}
+
+function toggleActiveBookmark() {
+  const tab = getActiveTab();
+  const url = tab?.url || tab?.view.webContents.getURL();
+  if (!url || url === BLANK_PAGE_URL) return;
+
+  const index = bookmarks.findIndex((bookmark) => bookmark.url === url);
+  if (index === -1) bookmarks.unshift({ url, title: tab.title || url, favicon: tab.favicon || '' });
+  else bookmarks.splice(index, 1);
+  saveBookmarks();
+  notifyToolbar();
+}
+
+async function getFaviconDataUrl(webContents, url) {
+  if (url.startsWith('data:')) return url;
+
+  try {
+    const response = await webContents.session.fetch(url);
+    const contentType = response.headers.get('content-type')?.split(';', 1)[0] || '';
+    if (!response.ok || !contentType.startsWith('image/')) return url;
+    const data = Buffer.from(await response.arrayBuffer());
+    if (!data.length || data.length > MAX_FAVICON_BYTES) return url;
+    return `data:${contentType};base64,${data.toString('base64')}`;
+  } catch {
+    return url;
+  }
+}
+
 function applyDefaultScrollbar(webContents) {
   // Prepending a low-priority author stylesheet lets a site's own scrollbar rules win.
   webContents.executeJavaScript(`
@@ -183,7 +284,7 @@ function layoutViews() {
   if (!window || window.isDestroyed()) return;
 
   const { width, height } = window.getContentBounds();
-  const toolbarHeight = contentFullscreen ? 0 : TOOLBAR_HEIGHT + toolbarSuggestionHeight;
+  const toolbarHeight = contentFullscreen ? 0 : TOOLBAR_HEIGHT + (bookmarksVisible ? BOOKMARKS_BAR_HEIGHT : 0) + toolbarSuggestionHeight;
   toolbarView.setBounds({ x: 0, y: 0, width, height: toolbarHeight });
 
   for (const tab of tabs) {
@@ -219,9 +320,9 @@ function createTab(address = BLANK_PAGE_URL, makeActive = true) {
       sandbox: true,
     },
   });
-  view.setBackgroundColor('#000000');
+  view.setBackgroundColor('#ffffff');
   view.webContents.setZoomLevel(0);
-  const tab = { id, view, title: 'Nueva pestaña', url: '', loading: true };
+  const tab = { id, view, title: 'Nueva pestaña', url: '', loading: true, favicon: '' };
   tabs.push(tab);
 
   const updateTab = () => {
@@ -234,6 +335,7 @@ function createTab(address = BLANK_PAGE_URL, makeActive = true) {
 
   view.webContents.on('did-start-loading', () => {
     tab.loading = true;
+    tab.favicon = '';
     notifyToolbar();
   });
   view.webContents.on('did-stop-loading', () => {
@@ -241,12 +343,32 @@ function createTab(address = BLANK_PAGE_URL, makeActive = true) {
     updateTab();
   });
   view.webContents.on('did-finish-load', () => applyDefaultScrollbar(view.webContents));
+  view.webContents.on('page-favicon-updated', (_event, favicons) => {
+    const faviconUrl = favicons.find((candidate) => typeof candidate === 'string') || '';
+    const pageUrl = view.webContents.getURL();
+    if (!faviconUrl) return;
+    getFaviconDataUrl(view.webContents, faviconUrl).then((favicon) => {
+      if (view.webContents.getURL() !== pageUrl || tab.favicon === favicon) return;
+      tab.favicon = favicon;
+      const bookmark = bookmarks.find((candidate) => candidate.url === tab.url);
+      if (bookmark) {
+        bookmark.favicon = favicon;
+        saveBookmarks();
+        notifyToolbar();
+      }
+    });
+  });
   view.webContents.on('context-menu', (_event, params) => showPageContextMenu(view.webContents, params));
   view.webContents.on('did-navigate', updateTab);
   view.webContents.on('did-navigate-in-page', updateTab);
   view.webContents.on('page-title-updated', (event, title) => {
     event.preventDefault();
     tab.title = title || tab.url || 'Nueva pestaña';
+    const bookmark = bookmarks.find((candidate) => candidate.url === tab.url);
+    if (bookmark && title) {
+      bookmark.title = title;
+      saveBookmarks();
+    }
     notifyToolbar();
   });
   view.webContents.setWindowOpenHandler(({ url }) => {
@@ -404,7 +526,7 @@ function createWindow() {
     height: 760,
     minWidth: 500,
     minHeight: 350,
-    backgroundColor: '#000000',
+    backgroundColor: '#ffffff',
     icon: path.join(ASSETS_DIR, 'icon.png'),
     titleBarStyle: 'hidden',
   });
@@ -459,6 +581,9 @@ ipcMain.handle('browser:suggest', async (event, query) => {
   return getSuggestions(query);
 });
 ipcMain.on('browser:navigate', (_event, address) => navigate(typeof address === 'string' ? address : ''));
+ipcMain.on('browser:focus-address', (event) => {
+  if (event.sender === getActiveTab()?.view.webContents) focusAddress();
+});
 ipcMain.on('browser:action', (_event, action) => {
   if (action === 'back') goBack();
   if (action === 'forward') goForward();
@@ -467,6 +592,7 @@ ipcMain.on('browser:action', (_event, action) => {
   if (action === 'close-tab') closeTab();
   if (action === 'focus-address') focusAddress();
   if (action === 'devtools') toggleDevTools();
+  if (action === 'toggle-bookmark') toggleActiveBookmark();
 });
 ipcMain.on('browser:select-tab', (_event, id) => showTab(id));
 ipcMain.on('browser:close-tab', (_event, id) => closeTab(id));
@@ -494,7 +620,9 @@ ipcMain.on('browser:window-action', (_event, action) => {
 });
 
 app.whenReady().then(() => {
-  Menu.setApplicationMenu(Menu.buildFromTemplate([
+  loadBrowserData();
+  loadBookmarks();
+  const menu = Menu.buildFromTemplate([
     { label: 'Navegacion', submenu: [
       { label: 'Enfocar direccion', accelerator: 'CommandOrControl+L', click: focusAddress },
       { label: 'Nueva pestaña', accelerator: 'CommandOrControl+T', click: () => createTab() },
@@ -521,7 +649,13 @@ app.whenReady().then(() => {
       { label: 'Pestaña 8', accelerator: 'CommandOrControl+8', click: () => selectTabByNumber(8) },
       { label: 'Ultima pestaña', accelerator: 'CommandOrControl+9', click: () => selectTabByNumber(9) },
     ] },
-  ]));
+    { label: 'Marcadores', submenu: [
+      { label: 'Añadir o quitar marcador', accelerator: 'CommandOrControl+D', click: toggleActiveBookmark },
+      { id: 'toggle-bookmarks-bar', label: 'Mostrar u ocultar barra de marcadores', type: 'checkbox', checked: bookmarksVisible, accelerator: 'CommandOrControl+Shift+B', click: toggleBookmarksBar },
+    ] },
+  ]);
+  bookmarksBarMenuItem = menu.getMenuItemById('toggle-bookmarks-bar');
+  Menu.setApplicationMenu(menu);
   createWindow();
 });
 

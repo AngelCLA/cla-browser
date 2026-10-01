@@ -12,7 +12,11 @@ function sendZoom(direction) {
 window.addEventListener('keydown', (event) => {
   if (!(event.ctrlKey || event.metaKey)) return;
 
-  if (event.key === '+' || event.key === '=') {
+  if (event.key.toLowerCase() === 'l') {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    ipcRenderer.send('browser:focus-address');
+  } else if (event.key === '+' || event.key === '=') {
     event.preventDefault();
     sendZoom('in');
   } else if (event.key === '-') {
