@@ -2,6 +2,7 @@ const { app, BaseWindow, WebContentsView, clipboard, ipcMain, Menu, net } = requ
 const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
+const { createBenchmarkState, installBenchmarkApi, markInitialTabReady } = require('./benchmark');
 
 const TOOLBAR_HEIGHT = 76;
 const BOOKMARKS_BAR_HEIGHT = 32;
@@ -11,6 +12,7 @@ const ASSETS_DIR = path.join(SOURCE_DIR, 'assets');
 const PRELOAD_DIR = path.join(SOURCE_DIR, 'preload');
 const RENDERER_DIR = path.join(SOURCE_DIR, 'renderer');
 const BLANK_PAGE_URL = pathToFileURL(path.join(RENDERER_DIR, 'new-tab', 'index.html')).toString();
+const benchmarkState = createBenchmarkState(process.env.CLA_BENCHMARK === '1');
 
 let window;
 let toolbarView;
@@ -342,7 +344,10 @@ function createTab(address = BLANK_PAGE_URL, makeActive = true) {
     tab.loading = false;
     updateTab();
   });
-  view.webContents.on('did-finish-load', () => applyDefaultScrollbar(view.webContents));
+  view.webContents.on('did-finish-load', () => {
+    applyDefaultScrollbar(view.webContents);
+    if (view.webContents.getURL() === BLANK_PAGE_URL) markInitialTabReady(benchmarkState);
+  });
   view.webContents.on('page-favicon-updated', (_event, favicons) => {
     const faviconUrl = favicons.find((candidate) => typeof candidate === 'string') || '';
     const pageUrl = view.webContents.getURL();
@@ -657,6 +662,15 @@ app.whenReady().then(() => {
   bookmarksBarMenuItem = menu.getMenuItemById('toggle-bookmarks-bar');
   Menu.setApplicationMenu(menu);
   createWindow();
+  installBenchmarkApi(benchmarkState, {
+    app,
+    getActiveTab,
+    createTab,
+    closeTab,
+    showTab,
+    getWindow: () => window,
+    getToolbarHeight: () => contentFullscreen ? 0 : TOOLBAR_HEIGHT + (bookmarksVisible ? BOOKMARKS_BAR_HEIGHT : 0) + toolbarSuggestionHeight,
+  });
 });
 
 app.on('window-all-closed', () => {

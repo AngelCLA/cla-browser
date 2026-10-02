@@ -4,8 +4,9 @@
   "description": "",
   "main": "src/main/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "electron ."
+    "test": "node --test",
+    "start": "electron .",
+    "benchmark": "node bench/run.js"
   },
   "keywords": [],
   "author": "",
@@ -13,5 +14,8 @@
   "type": "commonjs",
   "dependencies": {
     "electron": "^44.5.1"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0"
   }
 }

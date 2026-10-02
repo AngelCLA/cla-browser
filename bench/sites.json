@@ -1,0 +1,16 @@
+{
+  "sites": [
+    { "name": "wikipedia", "url": "https://www.wikipedia.org/" },
+    { "name": "mdn", "url": "https://developer.mozilla.org/" },
+    { "name": "hacker-news", "url": "https://news.ycombinator.com/" },
+    { "name": "github", "url": "https://github.com/" },
+    { "name": "stackoverflow", "url": "https://stackoverflow.com/" },
+    { "name": "youtube", "url": "https://www.youtube.com/" },
+    { "name": "reddit", "url": "https://www.reddit.com/" },
+    { "name": "google-maps", "url": "https://maps.google.com/" },
+    { "name": "figma", "url": "https://www.figma.com/" },
+    { "name": "canva", "url": "https://www.canva.com/" },
+    { "name": "amazon", "url": "https://www.amazon.com/" },
+    { "name": "speedometer", "url": "https://browserbench.org/Speedometer3.1/" }
+  ]
+}

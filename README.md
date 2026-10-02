@@ -13,6 +13,51 @@ npm install
 npm start
 ```
 
+## Benchmark de rendimiento
+
+La suite compara CLA Browser con Chrome, Edge y Firefox de Playwright. Mide arranque, carga de navegacion, FCP, LCP cuando el motor lo expone, recursos, interaccion guionizada, operaciones de pestanas y recursos del proceso en Windows.
+
+Instala una vez el Firefox administrado por Playwright:
+
+```bash
+npx playwright install firefox
+```
+
+Chrome y Edge se usan desde sus instalaciones locales. Ejecuta una pasada completa con perfiles temporales, cache fria y caliente, escenarios locales y sitios reales:
+
+```bash
+npm run benchmark -- --runs 12
+```
+
+La pasada por defecto usa cinco repeticiones para una comprobacion mas rapida. Para una prueba local breve de CLA Browser:
+
+```bash
+npm run benchmark -- --browsers cla --scenarios local --runs 1
+```
+
+Opciones disponibles:
+
+```text
+--browsers cla,chrome,edge,firefox
+--cache cold,warm
+--runs 12
+--scenarios local,real
+--sites ruta/a/sitios.json
+--output directorio/de/salida
+--headless
+```
+
+Los sitios reales configurados estan en `bench/sites.json`. Sustituyelos por entre tres y cinco URLs que representen el uso habitual antes de comparar resultados. Las cargas reales se informan separadas de los escenarios locales porque red, CDN y contenido remoto no son deterministas.
+
+Cada ejecucion crea `benchmark-results/<fecha>/` con:
+
+- `raw.ndjson`: cada observacion individual y sus errores.
+- `summary.json`: mediana, p95, minimo y maximo agrupados por navegador, escenario y cache.
+- `summary.csv`: datos aptos para Excel u otra herramienta de graficos.
+- `environment.json`: version de Node, CPU, RAM, sistema y viewport usados.
+
+No compares un valor unico como si fuera una clasificacion absoluta. CLA Browser usa Chromium incluido en Electron: las metricas de carga web se deben leer junto con la version de Chromium registrada, mientras que arranque, pestanas y memoria miden el coste del shell de escritorio.
+
 ## Funciones
 
 - Pestaña inicial local con el logo de CLA.
