@@ -72,6 +72,7 @@ No compares un valor unico como si fuera una clasificacion absoluta. CLA Browser
 - Zoom de la pestaña activa por teclado y con `Ctrl/Cmd + rueda`.
 - Controles personalizados para minimizar, maximizar/restaurar y cerrar.
 - Scroll oscuro de CLA Browser cuando el sitio no aporta uno propio. Las reglas del sitio prevalecen sobre el estilo predeterminado.
+- El navegador usa el modo oscuro de forma predeterminada: las páginas que respetan `prefers-color-scheme` y sus favicons se cargan con su variante oscura.
 - Marcadores persistentes: la estrella añade o quita la página activa y la barra permite abrirlos.
 - El listado editable de marcadores está en `bookmarks.json` en la raíz del proyecto. Es un arreglo de objetos con `title` y `url`; `favicon` se completa automáticamente.
 

@@ -1,4 +1,4 @@
-const { app, BaseWindow, WebContentsView, clipboard, ipcMain, Menu, net } = require('electron');
+const { app, BaseWindow, WebContentsView, clipboard, ipcMain, Menu, nativeTheme, net } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
@@ -13,6 +13,9 @@ const PRELOAD_DIR = path.join(SOURCE_DIR, 'preload');
 const RENDERER_DIR = path.join(SOURCE_DIR, 'renderer');
 const BLANK_PAGE_URL = pathToFileURL(path.join(RENDERER_DIR, 'new-tab', 'index.html')).toString();
 const benchmarkState = createBenchmarkState(process.env.CLA_BENCHMARK === '1');
+
+// Make prefers-color-scheme dark available before any page selects its assets, including favicons.
+nativeTheme.themeSource = 'dark';
 
 let window;
 let toolbarView;
@@ -322,7 +325,7 @@ function createTab(address = BLANK_PAGE_URL, makeActive = true) {
       sandbox: true,
     },
   });
-  view.setBackgroundColor('#ffffff');
+  view.setBackgroundColor('#000000');
   view.webContents.setZoomLevel(0);
   const tab = { id, view, title: 'Nueva pestaña', url: '', loading: true, favicon: '' };
   tabs.push(tab);
@@ -531,7 +534,7 @@ function createWindow() {
     height: 760,
     minWidth: 500,
     minHeight: 350,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#000000',
     icon: path.join(ASSETS_DIR, 'icon.png'),
     titleBarStyle: 'hidden',
   });
