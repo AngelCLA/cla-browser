@@ -1,10 +1,10 @@
-const { app, BaseWindow, WebContentsView, clipboard, ipcMain, Menu, nativeTheme, net } = require('electron');
+const { app, BaseWindow, WebContentsView, clipboard, dialog, ipcMain, Menu, nativeTheme, net, session, webContents } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { createBenchmarkState, installBenchmarkApi, markInitialTabReady } = require('./benchmark');
 const { normalizeBookmarkUrl, normalizeBookmarks, selectBookmarks } = require('./bookmarks');
-const { edition } = require('./edition');
+const { edition, institutionalLogoUrl, isBlockedUrl, isRestrictedInstaller, loadInstitutionalConfig } = require('./edition');
 
 const TOOLBAR_HEIGHT = 76;
 const BOOKMARKS_BAR_HEIGHT = 32;
@@ -12,7 +12,17 @@ const SOURCE_DIR = path.join(__dirname, '..');
 const ASSETS_DIR = path.join(SOURCE_DIR, 'assets');
 const PRELOAD_DIR = path.join(SOURCE_DIR, 'preload');
 const RENDERER_DIR = path.join(SOURCE_DIR, 'renderer');
-const BLANK_PAGE_URL = `${pathToFileURL(path.join(RENDERER_DIR, 'new-tab', 'index.html')).toString()}?edition=${edition}`;
+const RESTRICTED_PAGE_URL = pathToFileURL(path.join(RENDERER_DIR, 'restricted', 'index.html')).toString();
+const institutionalConfig = loadInstitutionalConfig(app.getAppPath());
+const blankPageUrl = pathToFileURL(path.join(RENDERER_DIR, 'new-tab', 'index.html'));
+blankPageUrl.searchParams.set('edition', edition);
+if (edition === 'institutional') {
+  blankPageUrl.searchParams.set('organizationName', institutionalConfig.organizationName);
+  blankPageUrl.searchParams.set('accentColor', institutionalConfig.accentColor);
+  const logoUrl = institutionalLogoUrl(app.getAppPath(), institutionalConfig.logo);
+  if (logoUrl) blankPageUrl.searchParams.set('logo', logoUrl);
+}
+const BLANK_PAGE_URL = blankPageUrl.toString();
 const benchmarkState = createBenchmarkState(process.env.CLA_BENCHMARK === '1');
 
 // Make prefers-color-scheme dark available before any page selects its assets, including favicons.
@@ -142,6 +152,44 @@ function normalizeAddress(value) {
   return `https://www.google.com/search?q=${encodeURIComponent(input)}`;
 }
 
+function restrictedPageUrl(url) {
+  const pageUrl = new URL(RESTRICTED_PAGE_URL);
+  try {
+    pageUrl.searchParams.set('site', new URL(url).hostname);
+  } catch {}
+  pageUrl.searchParams.set('organizationName', institutionalConfig.organizationName);
+  const logoUrl = institutionalLogoUrl(app.getAppPath(), institutionalConfig.logo);
+  if (logoUrl) pageUrl.searchParams.set('logo', logoUrl);
+  return pageUrl.toString();
+}
+
+function installBlockedSiteFilter() {
+  if (edition !== 'institutional') return;
+  if (institutionalConfig.blockedSites.length) {
+    session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
+      if (details.resourceType === 'mainFrame' && isBlockedUrl(details.url, institutionalConfig.blockedSites)) {
+        callback({ cancel: true });
+        setImmediate(() => {
+          const contents = webContents.fromId(details.webContentsId);
+          if (!contents || contents.isDestroyed()) return;
+          contents.loadURL(restrictedPageUrl(details.url)).catch(() => {});
+        });
+        return;
+      }
+      callback({ cancel: false });
+    });
+  }
+  session.defaultSession.on('will-download', (event, item) => {
+    if (!isRestrictedInstaller(item.getFilename())) return;
+    event.preventDefault();
+    dialog.showMessageBox({
+      type: 'warning',
+      title: 'Descarga restringida',
+      message: 'Esta descarga no está permitida por las políticas de la institución.',
+    });
+  });
+}
+
 function getActiveTab() {
   return tabs.find((tab) => tab.id === activeTabId);
 }
@@ -149,7 +197,7 @@ function getActiveTab() {
 function tabState() {
   return {
     activeTabId,
-    tabs: tabs.map(({ id, title, url, loading }) => ({ id, title, url, loading })),
+    tabs: tabs.map(({ id, title, url, loading }) => ({ id, title, url, loading, restricted: url.startsWith(RESTRICTED_PAGE_URL) })),
     bookmarks,
     bookmarksVisible,
   };
@@ -598,6 +646,9 @@ ipcMain.handle('browser:suggest', async (event, query) => {
   return getSuggestions(query);
 });
 ipcMain.on('browser:navigate', (_event, address) => navigate(typeof address === 'string' ? address : ''));
+ipcMain.on('browser:go-back', (event) => {
+  if (event.sender === getActiveTab()?.view.webContents) goBack();
+});
 ipcMain.on('browser:focus-address', (event) => {
   if (event.sender === getActiveTab()?.view.webContents) focusAddress();
 });
@@ -637,6 +688,7 @@ ipcMain.on('browser:window-action', (_event, action) => {
 });
 
 app.whenReady().then(() => {
+  installBlockedSiteFilter();
   loadBrowserData();
   loadBookmarks();
   const menu = Menu.buildFromTemplate([

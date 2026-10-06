@@ -29,6 +29,18 @@ npm start
 
 La edición personal también se usa automáticamente al abrir una terminal nueva y ejecutar `npm start`.
 
+La edición institucional carga `institutional.config.json` desde la raíz. Modifica `organizationName`, `accentColor` y la ruta relativa de `logo` para personalizarla. El logo de muestra está en `src/assets/institutional/logo.svg`; `appIcon` queda preparado para el empaquetado del instalador.
+
+Para restringir navegaciones en esa edición, añade dominios a `blockedSites`. Se bloquea el dominio y sus subdominios, y se muestra una página local de “Sitio restringido”. No se bloquean recursos secundarios de sitios permitidos.
+
+```json
+{
+  "blockedSites": ["facebook.com", "youtube.com"]
+}
+```
+
+La edición institucional también cancela descargas de instaladores reconocibles de otros navegadores, plataformas de juegos y juegos populares por su nombre y extensión, sin bloquear los dominios desde los que se descargan.
+
 ## Benchmark de rendimiento
 
 La suite compara CLA Browser con Chrome, Edge y Firefox de Playwright. Mide arranque, carga de navegacion, FCP, LCP cuando el motor lo expone, recursos, interaccion guionizada, operaciones de pestanas y recursos del proceso en Windows.

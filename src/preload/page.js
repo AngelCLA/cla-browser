@@ -33,3 +33,5 @@ window.addEventListener('wheel', (event) => {
   event.preventDefault();
   sendZoom(event.deltaY < 0 ? 'in' : 'out');
 }, { capture: true, passive: false });
+
+window.addEventListener('cla-browser:go-back', () => ipcRenderer.send('browser:go-back'));
