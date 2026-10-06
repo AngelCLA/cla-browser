@@ -74,13 +74,29 @@ No compares un valor unico como si fuera una clasificacion absoluta. CLA Browser
 - Scroll oscuro de CLA Browser cuando el sitio no aporta uno propio. Las reglas del sitio prevalecen sobre el estilo predeterminado.
 - El navegador usa el modo oscuro de forma predeterminada: las páginas que respetan `prefers-color-scheme` y sus favicons se cargan con su variante oscura.
 - Marcadores persistentes: la estrella añade o quita la página activa y la barra permite abrirlos.
-- El listado editable de marcadores está en `bookmarks.json` en la raíz del proyecto. Es un arreglo de objetos con `title` y `url`; `favicon` se completa automáticamente.
+
+### Marcadores
+
+En una instalación nueva se crean tres marcadores iniciales: Google, Google Drive y Gmail. Son solo valores iniciales: se pueden eliminar y no reaparecen al iniciar el navegador.
+
+El listado editable se guarda en `userData/bookmarks.json` de Electron, no en el directorio de la aplicación. En Windows corresponde normalmente a `%APPDATA%/cla-browser/bookmarks.json`. Esto evita que una actualización sobrescriba los marcadores del usuario.
+
+El `bookmarks.json` de la raíz contiene los valores iniciales para instalaciones nuevas. Si se detecta una instalación anterior, sus marcadores se migran una única vez a `userData`, se eliminan favicons Base64 y se descartan URLs duplicadas.
+
+Cada registro necesita `title` y `url`. `id` y `category` son opcionales y permiten clasificar marcadores en futuras ediciones institucionales sin afectar la interfaz actual.
 
 ```json
 [
-  { "title": "Ejemplo", "url": "https://ejemplo.com" }
+  {
+    "id": "google",
+    "title": "Google",
+    "url": "https://www.google.com/",
+    "category": "search"
+  }
 ]
 ```
+
+Los favicons no se escriben en el archivo de marcadores. CLA Browser usa el icono anunciado por cada sitio mientras está disponible y el caché local de Chromium; prueba `/favicon.ico` como respaldo y muestra un icono genérico si la descarga falla.
 
 ## Controles
 
@@ -120,6 +136,7 @@ src/
   assets/             Recursos compartidos, como logos SVG.
   main/               Proceso principal de Electron.
     index.js           Ventana, pestañas, navegación, menú, zoom e IPC.
+    bookmarks.js       Defaults, normalización, deduplicación y migración de marcadores.
   preload/            Código aislado que corre antes que cada renderer.
     toolbar.js         Puente mínimo con contextBridge para la interfaz local.
     page.js            Atajos y rueda de zoom, sin API expuesta a los sitios.

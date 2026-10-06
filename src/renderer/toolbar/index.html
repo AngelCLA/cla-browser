@@ -49,7 +49,8 @@
       .bookmark-item { display: flex; width: 24px; height: 24px; align-items: center; justify-content: center; border-radius: 4px; color: #c7c7c7; }
       .bookmark { display: grid; width: 18px; height: 18px; place-items: center; padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; }
       .bookmark:hover { background: #262626; color: #fff; }
-      .bookmark-favicon { width: 14px; height: 14px; flex: 0 0 auto; }
+       .bookmark-favicon { width: 14px; height: 14px; flex: 0 0 auto; }
+       .bookmark-favicon.fallback { border: 1px solid currentColor; border-radius: 50%; opacity: .65; }
       .bookmarks-empty { padding: 0 8px; color: #777; font-size: 11px; }
       #suggestions { display: none; margin: 8px 10px 8px; padding-top: 4px; overflow: hidden; border: 1px solid #333; border-radius: 6px; background: #171717; }
       #suggestions.visible { display: block; }
@@ -168,19 +169,26 @@
             open.className = 'bookmark';
             open.type = 'button';
             open.title = bookmark.title || bookmark.url;
-            open.setAttribute('aria-label', bookmark.title || bookmark.url);
-            const fallback = fallbackFavicon(bookmark.url);
-            if (bookmark.favicon || fallback) {
-              const favicon = document.createElement('img');
-              favicon.className = 'bookmark-favicon';
-              favicon.src = bookmark.favicon || fallback;
-              favicon.alt = '';
-              favicon.addEventListener('error', () => {
+             open.setAttribute('aria-label', bookmark.title || bookmark.url);
+             const fallback = fallbackFavicon(bookmark.url);
+             const addGenericIcon = () => {
+               if (open.querySelector('.bookmark-favicon')) return;
+               const generic = document.createElement('span');
+               generic.className = 'bookmark-favicon fallback';
+               generic.setAttribute('aria-hidden', 'true');
+               open.prepend(generic);
+             };
+             if (bookmark.favicon || fallback) {
+               const favicon = document.createElement('img');
+               favicon.className = 'bookmark-favicon';
+               favicon.src = bookmark.favicon || fallback;
+               favicon.alt = '';
+               favicon.addEventListener('error', () => {
                 if (fallback && favicon.src !== fallback) favicon.src = fallback;
-                else favicon.remove();
-              });
-              open.append(favicon);
-            }
+                else { favicon.remove(); addGenericIcon(); }
+               });
+               open.append(favicon);
+             } else addGenericIcon();
             const label = document.createElement('span');
             label.hidden = true;
             label.textContent = bookmark.title || bookmark.url;

@@ -3,10 +3,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { createBenchmarkState, installBenchmarkApi, markInitialTabReady } = require('./benchmark');
+const { normalizeBookmarkUrl, normalizeBookmarks, selectBookmarks } = require('./bookmarks');
 
 const TOOLBAR_HEIGHT = 76;
 const BOOKMARKS_BAR_HEIGHT = 32;
-const MAX_FAVICON_BYTES = 256 * 1024;
 const SOURCE_DIR = path.join(__dirname, '..');
 const ASSETS_DIR = path.join(SOURCE_DIR, 'assets');
 const PRELOAD_DIR = path.join(SOURCE_DIR, 'preload');
@@ -135,20 +135,19 @@ function browserDataPath() {
 }
 
 function bookmarksPath() {
+  return path.join(app.getPath('userData'), 'bookmarks.json');
+}
+
+function legacyBookmarksPath() {
   return path.join(app.getAppPath(), 'bookmarks.json');
 }
 
-function normalizeBookmarks(data) {
-  return Array.isArray(data)
-    ? data
-      .filter((bookmark) => typeof bookmark?.url === 'string' && bookmark.url.length > 0)
-      .slice(0, 100)
-      .map((bookmark) => ({
-        url: bookmark.url,
-        title: typeof bookmark.title === 'string' ? bookmark.title : bookmark.url,
-        favicon: typeof bookmark.favicon === 'string' ? bookmark.favicon : '',
-      }))
-    : [];
+function readBookmarks(filePath) {
+  try {
+    return normalizeBookmarks(JSON.parse(fs.readFileSync(filePath, 'utf8')));
+  } catch {
+    return [];
+  }
 }
 
 function loadBrowserData() {
@@ -160,15 +159,16 @@ function loadBrowserData() {
 }
 
 function loadBookmarks() {
-  try {
-    const data = JSON.parse(fs.readFileSync(bookmarksPath(), 'utf8'));
-    bookmarks = normalizeBookmarks(data);
-    if (!bookmarks.length && legacyBookmarks.length) {
-      bookmarks = legacyBookmarks;
-      saveBookmarks();
-      saveBrowserData();
-    }
-  } catch {}
+  const hasUserFile = fs.existsSync(bookmarksPath());
+  bookmarks = selectBookmarks({
+    hasUserFile,
+    userBookmarks: hasUserFile ? readBookmarks(bookmarksPath()) : [],
+    legacyAppBookmarks: hasUserFile ? [] : readBookmarks(legacyBookmarksPath()),
+    legacyBrowserBookmarks: legacyBookmarks,
+  });
+  // Removes legacy Base64 favicons and duplicate URLs on first launch.
+  saveBookmarks();
+  if (!hasUserFile) saveBrowserData();
 }
 
 function saveBrowserData() {
@@ -179,7 +179,7 @@ function saveBrowserData() {
 
 function saveBookmarks() {
   try {
-    fs.writeFileSync(bookmarksPath(), `${JSON.stringify(bookmarks, null, 2)}\n`);
+    fs.writeFileSync(bookmarksPath(), `${JSON.stringify(normalizeBookmarks(bookmarks), null, 2)}\n`);
   } catch {}
 }
 
@@ -243,29 +243,14 @@ function toggleBookmarksBar() {
 
 function toggleActiveBookmark() {
   const tab = getActiveTab();
-  const url = tab?.url || tab?.view.webContents.getURL();
+  const url = normalizeBookmarkUrl(tab?.url || tab?.view.webContents.getURL());
   if (!url || url === BLANK_PAGE_URL) return;
 
   const index = bookmarks.findIndex((bookmark) => bookmark.url === url);
-  if (index === -1) bookmarks.unshift({ url, title: tab.title || url, favicon: tab.favicon || '' });
+  if (index === -1) bookmarks.unshift({ url, title: tab.title || url });
   else bookmarks.splice(index, 1);
   saveBookmarks();
   notifyToolbar();
-}
-
-async function getFaviconDataUrl(webContents, url) {
-  if (url.startsWith('data:')) return url;
-
-  try {
-    const response = await webContents.session.fetch(url);
-    const contentType = response.headers.get('content-type')?.split(';', 1)[0] || '';
-    if (!response.ok || !contentType.startsWith('image/')) return url;
-    const data = Buffer.from(await response.arrayBuffer());
-    if (!data.length || data.length > MAX_FAVICON_BYTES) return url;
-    return `data:${contentType};base64,${data.toString('base64')}`;
-  } catch {
-    return url;
-  }
 }
 
 function applyDefaultScrollbar(webContents) {
@@ -332,7 +317,7 @@ function createTab(address = BLANK_PAGE_URL, makeActive = true) {
 
   const updateTab = () => {
     const currentUrl = view.webContents.getURL();
-    tab.url = currentUrl === BLANK_PAGE_URL ? '' : currentUrl;
+    tab.url = currentUrl === BLANK_PAGE_URL ? '' : normalizeBookmarkUrl(currentUrl) || currentUrl;
     tab.title = view.webContents.getTitle() || tab.url || 'Nueva pestaña';
     recordVisitedPage(tab.url, tab.title);
     notifyToolbar();
@@ -355,16 +340,15 @@ function createTab(address = BLANK_PAGE_URL, makeActive = true) {
     const faviconUrl = favicons.find((candidate) => typeof candidate === 'string') || '';
     const pageUrl = view.webContents.getURL();
     if (!faviconUrl) return;
-    getFaviconDataUrl(view.webContents, faviconUrl).then((favicon) => {
-      if (view.webContents.getURL() !== pageUrl || tab.favicon === favicon) return;
-      tab.favicon = favicon;
-      const bookmark = bookmarks.find((candidate) => candidate.url === tab.url);
+    // The Chromium session caches site-provided icons in userData; keep only the URL in memory.
+    if (view.webContents.getURL() === pageUrl && tab.favicon !== faviconUrl) {
+      tab.favicon = faviconUrl;
+      const bookmark = bookmarks.find((candidate) => candidate.url === normalizeBookmarkUrl(tab.url));
       if (bookmark) {
-        bookmark.favicon = favicon;
-        saveBookmarks();
+        bookmark.favicon = faviconUrl;
         notifyToolbar();
       }
-    });
+    }
   });
   view.webContents.on('context-menu', (_event, params) => showPageContextMenu(view.webContents, params));
   view.webContents.on('did-navigate', updateTab);
@@ -372,7 +356,7 @@ function createTab(address = BLANK_PAGE_URL, makeActive = true) {
   view.webContents.on('page-title-updated', (event, title) => {
     event.preventDefault();
     tab.title = title || tab.url || 'Nueva pestaña';
-    const bookmark = bookmarks.find((candidate) => candidate.url === tab.url);
+    const bookmark = bookmarks.find((candidate) => candidate.url === normalizeBookmarkUrl(tab.url));
     if (bookmark && title) {
       bookmark.title = title;
       saveBookmarks();
