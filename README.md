@@ -41,6 +41,8 @@ Para restringir navegaciones en esa edición, añade dominios a `blockedSites`. 
 
 La edición institucional también cancela descargas de instaladores reconocibles de otros navegadores, plataformas de juegos y juegos populares por su nombre y extensión, sin bloquear los dominios desde los que se descargan.
 
+La edición institucional conserva historial local durante cuatro meses en `userData/history.json`. No hay botón ni entrada de menú para abrirlo: usa `Ctrl/Cmd + H`. El historial se expone solo a su página local; no se comparte con sitios web. Como cualquier archivo de perfil local, no está cifrado y debe protegerse con las cuentas y permisos del sistema operativo.
+
 ## Benchmark de rendimiento
 
 La suite compara CLA Browser con Chrome, Edge y Firefox de Playwright. Mide arranque, carga de navegacion, FCP, LCP cuando el motor lo expone, recursos, interaccion guionizada, operaciones de pestanas y recursos del proceso en Windows.

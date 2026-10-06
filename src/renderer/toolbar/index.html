@@ -289,7 +289,13 @@
            address.blur();
          }
        });
-      document.querySelectorAll('[data-action]').forEach((button) => button.addEventListener('click', () => window.browser.action(button.dataset.action)));
+       document.addEventListener('keydown', (event) => {
+         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'h') {
+           event.preventDefault();
+           window.browser.action('show-history');
+         }
+       });
+       document.querySelectorAll('[data-action]').forEach((button) => button.addEventListener('click', () => window.browser.action(button.dataset.action)));
       document.querySelectorAll('[data-window-action]').forEach((button) => button.addEventListener('click', () => window.browser.windowAction(button.dataset.windowAction)));
       newTab.addEventListener('click', () => window.browser.action('new-tab'));
       window.browser.onState(render);

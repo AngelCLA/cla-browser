@@ -1,4 +1,8 @@
-const { ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('claBrowserHistory', {
+  getEntries: () => ipcRenderer.invoke('browser:get-history'),
+});
 
 let lastZoomAt = 0;
 
@@ -25,6 +29,9 @@ window.addEventListener('keydown', (event) => {
   } else if (event.key === '0') {
     event.preventDefault();
     sendZoom('reset');
+  } else if (event.key.toLowerCase() === 'h') {
+    event.preventDefault();
+    ipcRenderer.send('browser:show-history');
   }
 }, { capture: true });
 

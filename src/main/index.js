@@ -5,6 +5,7 @@ const { pathToFileURL } = require('node:url');
 const { createBenchmarkState, installBenchmarkApi, markInitialTabReady } = require('./benchmark');
 const { normalizeBookmarkUrl, normalizeBookmarks, selectBookmarks } = require('./bookmarks');
 const { edition, institutionalLogoUrl, isBlockedUrl, isRestrictedInstaller, loadInstitutionalConfig } = require('./edition');
+const { normalizeHistory } = require('./history');
 
 const TOOLBAR_HEIGHT = 76;
 const BOOKMARKS_BAR_HEIGHT = 32;
@@ -12,6 +13,7 @@ const SOURCE_DIR = path.join(__dirname, '..');
 const ASSETS_DIR = path.join(SOURCE_DIR, 'assets');
 const PRELOAD_DIR = path.join(SOURCE_DIR, 'preload');
 const RENDERER_DIR = path.join(SOURCE_DIR, 'renderer');
+const HISTORY_PAGE_URL = pathToFileURL(path.join(RENDERER_DIR, 'history', 'index.html')).toString();
 const RESTRICTED_PAGE_URL = pathToFileURL(path.join(RENDERER_DIR, 'restricted', 'index.html')).toString();
 const institutionalConfig = loadInstitutionalConfig(app.getAppPath());
 const blankPageUrl = pathToFileURL(path.join(RENDERER_DIR, 'new-tab', 'index.html'));
@@ -39,6 +41,7 @@ let nextTabId = 1;
 const tabs = [];
 const closedTabs = [];
 const recentPages = [];
+const historyEntries = [];
 let bookmarks = [];
 let legacyBookmarks = [];
 
@@ -207,6 +210,10 @@ function browserDataPath() {
   return path.join(app.getPath('userData'), 'browser-data.json');
 }
 
+function historyPath() {
+  return path.join(app.getPath('userData'), 'history.json');
+}
+
 function bookmarksPath() {
   return path.join(app.getPath('userData'), 'bookmarks.json');
 }
@@ -256,12 +263,36 @@ function saveBookmarks() {
   } catch {}
 }
 
+function loadInstitutionalHistory() {
+  if (edition !== 'institutional') return;
+  try {
+    historyEntries.push(...normalizeHistory(JSON.parse(fs.readFileSync(historyPath(), 'utf8'))));
+  } catch {}
+  for (const entry of historyEntries.slice(0, 100)) {
+    if (!recentPages.some((page) => page.url === entry.url)) recentPages.push({ url: entry.url, title: entry.title });
+  }
+  saveInstitutionalHistory();
+}
+
+function saveInstitutionalHistory() {
+  if (edition !== 'institutional') return;
+  try {
+    const normalized = normalizeHistory(historyEntries);
+    historyEntries.splice(0, historyEntries.length, ...normalized);
+    fs.writeFileSync(historyPath(), `${JSON.stringify(historyEntries, null, 2)}\n`);
+  } catch {}
+}
+
 function recordVisitedPage(url, title) {
-  if (!url || url === BLANK_PAGE_URL) return;
+  if (!url || url === BLANK_PAGE_URL || url.startsWith(HISTORY_PAGE_URL) || url.startsWith(RESTRICTED_PAGE_URL)) return;
   const existing = recentPages.findIndex((page) => page.url === url);
   if (existing !== -1) recentPages.splice(existing, 1);
   recentPages.unshift({ url, title: title || url });
   if (recentPages.length > 100) recentPages.pop();
+  if (edition === 'institutional') {
+    historyEntries.unshift({ url, title: title || url, visitedAt: Date.now() });
+    saveInstitutionalHistory();
+  }
 }
 
 async function getSuggestions(query) {
@@ -509,6 +540,10 @@ function reopenClosedTab() {
   if (tab) createTab(tab.url);
 }
 
+function showInstitutionalHistory() {
+  if (edition === 'institutional') createTab(HISTORY_PAGE_URL);
+}
+
 function moveTab(id, targetId, placeAfter) {
   const sourceIndex = tabs.findIndex((tab) => tab.id === id);
   const targetIndex = tabs.findIndex((tab) => tab.id === targetId);
@@ -645,7 +680,14 @@ ipcMain.handle('browser:suggest', async (event, query) => {
   if (event.sender !== toolbarView?.webContents || typeof query !== 'string' || query.length > 256) return [];
   return getSuggestions(query);
 });
+ipcMain.handle('browser:get-history', (event) => {
+  if (edition !== 'institutional' || !event.sender.getURL().startsWith(HISTORY_PAGE_URL)) return [];
+  return historyEntries;
+});
 ipcMain.on('browser:navigate', (_event, address) => navigate(typeof address === 'string' ? address : ''));
+ipcMain.on('browser:show-history', (event) => {
+  if (event.sender === getActiveTab()?.view.webContents) showInstitutionalHistory();
+});
 ipcMain.on('browser:go-back', (event) => {
   if (event.sender === getActiveTab()?.view.webContents) goBack();
 });
@@ -661,6 +703,7 @@ ipcMain.on('browser:action', (_event, action) => {
   if (action === 'focus-address') focusAddress();
   if (action === 'devtools') toggleDevTools();
   if (action === 'toggle-bookmark') toggleActiveBookmark();
+  if (action === 'show-history') showInstitutionalHistory();
 });
 ipcMain.on('browser:select-tab', (_event, id) => showTab(id));
 ipcMain.on('browser:close-tab', (_event, id) => closeTab(id));
@@ -691,6 +734,7 @@ app.whenReady().then(() => {
   installBlockedSiteFilter();
   loadBrowserData();
   loadBookmarks();
+  loadInstitutionalHistory();
   const menu = Menu.buildFromTemplate([
     { label: 'Navegacion', submenu: [
       { label: 'Enfocar direccion', accelerator: 'CommandOrControl+L', click: focusAddress },
