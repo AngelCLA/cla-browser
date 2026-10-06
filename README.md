@@ -13,6 +13,22 @@ npm install
 npm start
 ```
 
+La edición personal es la predeterminada. Para probar la nueva pestaña de la edición institucional, inicia Electron con `CLA_EDITION=institutional` en el entorno. En PowerShell:
+
+```powershell
+$env:CLA_EDITION = 'institutional'
+npm start
+```
+
+Para volver a la edición personal en la misma terminal de PowerShell:
+
+```powershell
+Remove-Item Env:CLA_EDITION
+npm start
+```
+
+La edición personal también se usa automáticamente al abrir una terminal nueva y ejecutar `npm start`.
+
 ## Benchmark de rendimiento
 
 La suite compara CLA Browser con Chrome, Edge y Firefox de Playwright. Mide arranque, carga de navegacion, FCP, LCP cuando el motor lo expone, recursos, interaccion guionizada, operaciones de pestanas y recursos del proceso en Windows.

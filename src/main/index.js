@@ -4,6 +4,7 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { createBenchmarkState, installBenchmarkApi, markInitialTabReady } = require('./benchmark');
 const { normalizeBookmarkUrl, normalizeBookmarks, selectBookmarks } = require('./bookmarks');
+const { edition } = require('./edition');
 
 const TOOLBAR_HEIGHT = 76;
 const BOOKMARKS_BAR_HEIGHT = 32;
@@ -11,7 +12,7 @@ const SOURCE_DIR = path.join(__dirname, '..');
 const ASSETS_DIR = path.join(SOURCE_DIR, 'assets');
 const PRELOAD_DIR = path.join(SOURCE_DIR, 'preload');
 const RENDERER_DIR = path.join(SOURCE_DIR, 'renderer');
-const BLANK_PAGE_URL = pathToFileURL(path.join(RENDERER_DIR, 'new-tab', 'index.html')).toString();
+const BLANK_PAGE_URL = `${pathToFileURL(path.join(RENDERER_DIR, 'new-tab', 'index.html')).toString()}?edition=${edition}`;
 const benchmarkState = createBenchmarkState(process.env.CLA_BENCHMARK === '1');
 
 // Make prefers-color-scheme dark available before any page selects its assets, including favicons.
@@ -41,16 +42,16 @@ const ADDRESS_OVERLAY_SCRIPT = `
       ':host { all: initial; }' +
       '.backdrop { position: fixed; inset: 0; z-index: 2147483647; display: grid; place-items: center; background: rgb(0 0 0 / 68%); font-family: Inter, ui-sans-serif, system-ui, sans-serif; animation: fade .14s ease-out; }' +
       '.dialog { width: min(620px, calc(100vw - 40px)); animation: rise .18s cubic-bezier(.16, 1, .3, 1); }' +
-      '.panel { padding: 9px; border: 1px solid #3f3f46; border-radius: 9px; background: #18181b; box-shadow: 0 24px 80px #0009; }' +
-      'input { width: 100%; height: 40px; box-sizing: border-box; padding: 0 14px; border: 1px solid #52525b; border-radius: 6px; outline: none; background: #0a0a0a; color: #f5f5f5; font: 14px Inter, ui-sans-serif, system-ui, sans-serif; }' +
-      'input:focus { border-color: #fafafa; box-shadow: 0 0 0 2px #ffffff1f; }' +
+      '.panel { padding: 0; }' +
+      'input { width: 100%; height: 48px; box-sizing: border-box; padding: 0 14px; border: 1px solid #3f3f46; border-radius: 9px; outline: none; background: #18181b; color: #f5f5f5; font: 14px Inter, ui-sans-serif, system-ui, sans-serif; box-shadow: 0 24px 80px #0009; }' +
+      'input:focus { border-color: #fafafa; box-shadow: 0 0 0 2px #ffffff1f, 0 24px 80px #0009; }' +
       '.suggestions { display: none; overflow: hidden; margin-top: 8px; border: 1px solid #3f3f46; border-radius: 9px; background: #18181b; box-shadow: 0 24px 80px #0009; }' +
       '.suggestions.visible { display: block; }' +
       '.suggestion { display: grid; width: 100%; height: 42px; box-sizing: border-box; grid-template-columns: 14px minmax(0, 1fr); align-items: center; gap: 9px; padding: 5px 12px; border: 0; border-bottom: 1px solid #303036; background: transparent; color: #e5e5e5; font: 12px Inter, ui-sans-serif, system-ui, sans-serif; text-align: left; cursor: pointer; }' +
-      '.suggestion:last-child { border-bottom: 0; } .suggestion:hover { background: #27272a; } .suggestion-icon { color: #a1a1aa; } .suggestion-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }' +
+      '.suggestion:last-child { border-bottom: 0; } .suggestion:hover, .suggestion.selected { background: #27272a; } .suggestion-icon { color: #a1a1aa; } .suggestion-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }' +
       '@keyframes fade { from { opacity: 0; } to { opacity: 1; } }' +
       '@keyframes rise { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }' +
-      '</style><div class="backdrop"><div class="dialog"><form class="panel"><input autofocus placeholder="Enter URL or search..." aria-label="Address" autocomplete="off"></form><div class="suggestions"></div></div></div>';
+      '</style><div class="backdrop"><div class="dialog"><form class="panel"><input autofocus placeholder="Buscar en la web o escribir una dirección..." aria-label="Address" autocomplete="off"></form><div class="suggestions"></div></div></div>';
     document.documentElement.append(host);
     const backdrop = shadow.querySelector('.backdrop');
     const input = shadow.querySelector('input');
@@ -58,6 +59,8 @@ const ADDRESS_OVERLAY_SCRIPT = `
     const close = () => host.remove();
     let suggestionRequest = 0;
     let suggestionTimer;
+    let suggestions = [];
+    let selectedSuggestionIndex = -1;
     input.value = location.href.startsWith('file:') ? '' : location.href;
     requestAnimationFrame(() => { input.focus(); input.select(); });
     shadow.addEventListener('keydown', (event) => { if (event.key === 'Escape') close(); });
@@ -66,14 +69,17 @@ const ADDRESS_OVERLAY_SCRIPT = `
       const destination = /^[a-z][a-z\\d+.-]*:/i.test(value) ? value : (value.includes('.') || value === 'localhost' ? 'https://' + value : 'https://www.google.com/search?q=' + encodeURIComponent(value));
       location.href = destination;
     };
-    const hideSuggestions = () => { suggestionsElement.replaceChildren(); suggestionsElement.classList.remove('visible'); };
-    const renderSuggestions = (suggestions) => {
+    const hideSuggestions = () => { suggestions = []; selectedSuggestionIndex = -1; suggestionsElement.replaceChildren(); suggestionsElement.classList.remove('visible'); };
+    const renderSuggestions = (items) => {
+      suggestions = items;
+      selectedSuggestionIndex = -1;
       suggestionsElement.replaceChildren();
-      if (!suggestions.length) return hideSuggestions();
-      for (const suggestion of suggestions) {
+      if (!items.length) return hideSuggestions();
+      for (const suggestion of items) {
         const option = document.createElement('button');
         option.className = 'suggestion';
         option.type = 'button';
+        option.setAttribute('aria-selected', 'false');
         option.innerHTML = '<span class="suggestion-icon"></span><span class="suggestion-text"></span>';
         option.querySelector('.suggestion-icon').textContent = suggestion.kind === 'url' ? 'O' : 'S';
         option.querySelector('.suggestion-text').textContent = suggestion.label;
@@ -81,6 +87,15 @@ const ADDRESS_OVERLAY_SCRIPT = `
         suggestionsElement.append(option);
       }
       suggestionsElement.classList.add('visible');
+    };
+    const selectSuggestion = (index) => {
+      if (!suggestions.length) return;
+      selectedSuggestionIndex = (index + suggestions.length) % suggestions.length;
+      suggestionsElement.querySelectorAll('.suggestion').forEach((option, optionIndex) => {
+        const selected = optionIndex === selectedSuggestionIndex;
+        option.classList.toggle('selected', selected);
+        option.setAttribute('aria-selected', String(selected));
+      });
     };
     const requestSuggestions = () => {
       const value = input.value.trim();
@@ -98,6 +113,16 @@ const ADDRESS_OVERLAY_SCRIPT = `
       }, 160);
     };
     input.addEventListener('input', requestSuggestions);
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        if (!suggestions.length) return;
+        event.preventDefault();
+        selectSuggestion(selectedSuggestionIndex + (event.key === 'ArrowDown' ? 1 : -1));
+      } else if (event.key === 'Enter' && selectedSuggestionIndex !== -1) {
+        event.preventDefault();
+        navigate(suggestions[selectedSuggestionIndex].value);
+      }
+    });
     shadow.querySelector('form').addEventListener('submit', (event) => {
       event.preventDefault();
       const value = input.value.trim();
