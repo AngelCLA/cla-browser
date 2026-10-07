@@ -166,12 +166,13 @@
          renderBookmarks();
        }
         function escapeHtml(value) { const element = document.createElement('span'); element.textContent = value; return element.innerHTML; }
-        function fallbackFavicon(url) {
-          try {
-            const page = new URL(url);
-            return page.protocol === 'http:' || page.protocol === 'https:' ? new URL('/favicon.ico', page).toString() : '';
-          } catch {
-            return '';
+         function fallbackFavicon(url) {
+           try {
+             const page = new URL(url);
+             if (page.hostname === 'mail.google.com') return 'https://ssl.gstatic.com/ui/v1/icons/mail/rfr/gmail.ico';
+             return page.protocol === 'http:' || page.protocol === 'https:' ? new URL('/favicon.ico', page).toString() : '';
+           } catch {
+             return '';
           }
         }
         function renderBookmarks() {
