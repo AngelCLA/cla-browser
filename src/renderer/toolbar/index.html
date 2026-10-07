@@ -46,7 +46,7 @@
        #address::placeholder { color: #777; }
        #address:disabled { color: #a1a1aa; cursor: default; opacity: 1; }
       #address:hover { border-color: #4a4a4a; }
-      #address:focus { border-color: #fafafa; background: #0a0a0a; box-shadow: 0 0 0 2px #ffffff1f; }
+      #address:focus { border-color: var(--address-accent, #fafafa); background: #0a0a0a; box-shadow: 0 0 0 2px #ffffff1f; }
       #bookmark-current.saved { color: #f7c948; }
       #bookmark-current.saved svg { fill: currentColor; }
       #bookmarks { display: flex; height: 32px; align-items: center; gap: 2px; overflow: hidden; padding: 3px 8px; border-bottom: 1px solid #262626; background: #0a0a0a; }
@@ -110,9 +110,10 @@
        let selectedSuggestionIndex = -1;
 
       function icon(path) { return `<svg viewBox="0 0 24 24"><path d="${path}" /></svg>`; }
-      function render(nextState) {
-        state = nextState;
-        tabList.replaceChildren();
+       function render(nextState) {
+         state = nextState;
+         document.documentElement.style.setProperty('--address-accent', state.addressAccentColor || '#fafafa');
+         tabList.replaceChildren();
         for (const tab of state.tabs) {
           const element = document.createElement('button');
           element.className = `tab ${tab.id === state.activeTabId ? 'active' : ''} ${tab.loading ? 'loading' : ''}`;
@@ -274,7 +275,7 @@
          });
          suggestionsElement.children[selectedSuggestionIndex]?.scrollIntoView({ block: 'nearest' });
        }
-      function requestSuggestions() {
+       function requestSuggestions() {
         const query = address.value.trim();
         const request = ++suggestionRequest;
         clearTimeout(suggestionTimer);
@@ -282,9 +283,9 @@
         suggestionTimer = setTimeout(async () => {
           const suggestions = await window.browser.suggest(query);
           if (request === suggestionRequest && document.activeElement === address) renderSuggestions(suggestions);
-        }, 160);
-      }
-      document.querySelector('form').addEventListener('submit', (event) => {
+         }, 160);
+       }
+       document.querySelector('form').addEventListener('submit', (event) => {
         event.preventDefault();
         hideSuggestions();
         address.blur();
@@ -313,11 +314,11 @@
          }
        });
        document.querySelectorAll('[data-action]').forEach((button) => button.addEventListener('click', () => window.browser.action(button.dataset.action)));
-      document.querySelectorAll('[data-window-action]').forEach((button) => button.addEventListener('click', () => window.browser.windowAction(button.dataset.windowAction)));
-      newTab.addEventListener('click', () => window.browser.action('new-tab'));
-      window.browser.onState(render);
-      window.browser.onWindowState(({ maximized }) => { maximizeIcon.innerHTML = maximized ? '<path d="M8 5h11v11M5 8h11v11H5z" />' : '<path d="M5 5h14v14H5z" />'; });
-      window.browser.getState().then(render);
+       document.querySelectorAll('[data-window-action]').forEach((button) => button.addEventListener('click', () => window.browser.windowAction(button.dataset.windowAction)));
+       newTab.addEventListener('click', () => window.browser.action('new-tab'));
+       window.browser.onState(render);
+       window.browser.onWindowState(({ maximized }) => { maximizeIcon.innerHTML = maximized ? '<path d="M8 5h11v11M5 8h11v11H5z" />' : '<path d="M5 5h14v14H5z" />'; });
+       window.browser.getState().then(render);
     </script>
   </body>
 </html>

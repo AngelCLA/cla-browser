@@ -17,6 +17,7 @@ const RENDERER_DIR = path.join(SOURCE_DIR, 'renderer');
 const HISTORY_PAGE_URL = pathToFileURL(path.join(RENDERER_DIR, 'history', 'index.html')).toString();
 const RESTRICTED_PAGE_URL = pathToFileURL(path.join(RENDERER_DIR, 'restricted', 'index.html')).toString();
 const institutionalConfig = loadInstitutionalConfig(app.getAppPath());
+const addressAccentColor = edition === 'institutional' ? institutionalConfig.accentColor : '#fafafa';
 const blankPageUrl = pathToFileURL(path.join(RENDERER_DIR, 'new-tab', 'index.html'));
 blankPageUrl.searchParams.set('edition', edition);
 if (edition === 'institutional') {
@@ -64,19 +65,32 @@ const ADDRESS_OVERLAY_SCRIPT = `
       '.dialog { width: min(620px, calc(100vw - 40px)); animation: rise .18s cubic-bezier(.16, 1, .3, 1); }' +
       '.panel { padding: 0; }' +
       'input { width: 100%; height: 48px; box-sizing: border-box; padding: 0 14px; border: 1px solid #3f3f46; border-radius: 9px; outline: none; background: #18181b; color: #f5f5f5; font: 14px Inter, ui-sans-serif, system-ui, sans-serif; box-shadow: 0 24px 80px #0009; }' +
-      'input:focus { border-color: #fafafa; box-shadow: 0 0 0 2px #ffffff1f, 0 24px 80px #0009; }' +
+       'input:focus { border-color: ${addressAccentColor}; box-shadow: 0 0 0 2px #ffffff1f, 0 24px 80px #0009; }' +
       '.suggestions { display: none; overflow: hidden; margin-top: 8px; border: 1px solid #3f3f46; border-radius: 9px; background: #18181b; box-shadow: 0 24px 80px #0009; }' +
       '.suggestions.visible { display: block; }' +
       '.suggestion { display: grid; width: 100%; height: 42px; box-sizing: border-box; grid-template-columns: 14px minmax(0, 1fr); align-items: center; gap: 9px; padding: 5px 12px; border: 0; border-bottom: 1px solid #303036; background: transparent; color: #e5e5e5; font: 12px Inter, ui-sans-serif, system-ui, sans-serif; text-align: left; cursor: pointer; }' +
       '.suggestion:last-child { border-bottom: 0; } .suggestion:hover, .suggestion.selected { background: #27272a; } .suggestion-icon { color: #a1a1aa; } .suggestion-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }' +
       '@keyframes fade { from { opacity: 0; } to { opacity: 1; } }' +
       '@keyframes rise { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }';
-    shadow.innerHTML = '<div class="backdrop"><div class="dialog"><form class="panel"><input autofocus placeholder="Buscar en la web o escribir una dirección..." aria-label="Address" autocomplete="off"></form><div class="suggestions"></div></div></div>';
     shadow.prepend(style);
+    const backdrop = document.createElement('div');
+    backdrop.className = 'backdrop';
+    const dialog = document.createElement('div');
+    dialog.className = 'dialog';
+    const form = document.createElement('form');
+    form.className = 'panel';
+    const input = document.createElement('input');
+    input.autofocus = true;
+    input.placeholder = 'Buscar o escribir una dirección...';
+    input.setAttribute('aria-label', 'Address');
+    input.autocomplete = 'off';
+    const suggestionsElement = document.createElement('div');
+    suggestionsElement.className = 'suggestions';
+    form.append(input);
+    dialog.append(form, suggestionsElement);
+    backdrop.append(dialog);
+    shadow.append(backdrop);
     document.documentElement.append(host);
-    const backdrop = shadow.querySelector('.backdrop');
-    const input = shadow.querySelector('input');
-    const suggestionsElement = shadow.querySelector('.suggestions');
     const close = () => host.remove();
     let suggestionRequest = 0;
     let suggestionTimer;
@@ -101,9 +115,13 @@ const ADDRESS_OVERLAY_SCRIPT = `
         option.className = 'suggestion';
         option.type = 'button';
         option.setAttribute('aria-selected', 'false');
-        option.innerHTML = '<span class="suggestion-icon"></span><span class="suggestion-text"></span>';
-        option.querySelector('.suggestion-icon').textContent = suggestion.kind === 'url' ? 'O' : 'S';
-        option.querySelector('.suggestion-text').textContent = suggestion.label;
+        const icon = document.createElement('span');
+        icon.className = 'suggestion-icon';
+        icon.textContent = suggestion.kind === 'url' ? 'O' : 'S';
+        const text = document.createElement('span');
+        text.className = 'suggestion-text';
+        text.textContent = suggestion.label;
+        option.append(icon, text);
         option.addEventListener('click', () => navigate(suggestion.value));
         suggestionsElement.append(option);
       }
@@ -144,7 +162,7 @@ const ADDRESS_OVERLAY_SCRIPT = `
         navigate(suggestions[selectedSuggestionIndex].value);
       }
     });
-    shadow.querySelector('form').addEventListener('submit', (event) => {
+    form.addEventListener('submit', (event) => {
       event.preventDefault();
       const value = input.value.trim();
       if (!value) return close();
@@ -218,6 +236,7 @@ function tabState() {
   const activeHostname = normalizeHostname(activeTab?.url);
   return {
     activeTabId,
+    addressAccentColor,
     tabs: tabs.map(({ id, title, url, loading }) => ({ id, title, url, loading, restricted: url.startsWith(RESTRICTED_PAGE_URL) })),
     bookmarks,
     bookmarksVisible,
@@ -441,13 +460,20 @@ function applyDefaultScrollbar(webContents) {
 function layoutViews() {
   if (!window || window.isDestroyed()) return;
 
-  const { width, height } = window.getContentBounds();
+  // The content view tracks the final client area, including after maximize and DPI changes.
+  const { width, height } = window.contentView.getBounds();
   const toolbarHeight = contentFullscreen ? 0 : TOOLBAR_HEIGHT + (bookmarksVisible ? BOOKMARKS_BAR_HEIGHT : 0) + toolbarSuggestionHeight;
   toolbarView.setBounds({ x: 0, y: 0, width, height: toolbarHeight });
 
   for (const tab of tabs) {
     tab.view.setBounds({ x: 0, y: toolbarHeight, width, height: Math.max(0, height - toolbarHeight) });
   }
+}
+
+function layoutViewsAfterResize() {
+  layoutViews();
+  // BaseWindow can emit its state event before the native client area reaches its final size.
+  setImmediate(layoutViews);
 }
 
 function showTab(id) {
@@ -478,7 +504,8 @@ function createTab(address = BLANK_PAGE_URL, makeActive = true) {
       sandbox: true,
     },
   });
-  view.setBackgroundColor('#000000');
+  // Light pages can leave unused regions transparent; use a neutral page fallback.
+  view.setBackgroundColor('#ffffff');
   view.webContents.setZoomLevel(0);
   const tab = { id, view, title: 'Nueva pestaña', url: '', loading: true, favicon: '', blockedRequests: 0 };
   tabs.push(tab);
@@ -715,13 +742,13 @@ function createWindow() {
     notifyToolbar();
     notifyWindowState();
   });
-  window.on('resize', layoutViews);
+  window.on('resize', layoutViewsAfterResize);
   window.on('maximize', () => {
-    layoutViews();
+    layoutViewsAfterResize();
     notifyWindowState();
   });
   window.on('unmaximize', () => {
-    layoutViews();
+    layoutViewsAfterResize();
     notifyWindowState();
   });
   window.on('enter-full-screen', () => {
