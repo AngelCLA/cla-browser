@@ -51,7 +51,8 @@ const ADDRESS_OVERLAY_SCRIPT = `
     const host = document.createElement('div');
     host.id = 'cla-address-overlay';
     const shadow = host.attachShadow({ mode: 'closed' });
-    shadow.innerHTML = '<style>' +
+    const style = document.createElement('style');
+    style.textContent =
       ':host { all: initial; }' +
       '.backdrop { position: fixed; inset: 0; z-index: 2147483647; display: grid; place-items: center; background: rgb(0 0 0 / 68%); font-family: Inter, ui-sans-serif, system-ui, sans-serif; animation: fade .14s ease-out; }' +
       '.dialog { width: min(620px, calc(100vw - 40px)); animation: rise .18s cubic-bezier(.16, 1, .3, 1); }' +
@@ -63,8 +64,9 @@ const ADDRESS_OVERLAY_SCRIPT = `
       '.suggestion { display: grid; width: 100%; height: 42px; box-sizing: border-box; grid-template-columns: 14px minmax(0, 1fr); align-items: center; gap: 9px; padding: 5px 12px; border: 0; border-bottom: 1px solid #303036; background: transparent; color: #e5e5e5; font: 12px Inter, ui-sans-serif, system-ui, sans-serif; text-align: left; cursor: pointer; }' +
       '.suggestion:last-child { border-bottom: 0; } .suggestion:hover, .suggestion.selected { background: #27272a; } .suggestion-icon { color: #a1a1aa; } .suggestion-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }' +
       '@keyframes fade { from { opacity: 0; } to { opacity: 1; } }' +
-      '@keyframes rise { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }' +
-      '</style><div class="backdrop"><div class="dialog"><form class="panel"><input autofocus placeholder="Buscar en la web o escribir una dirección..." aria-label="Address" autocomplete="off"></form><div class="suggestions"></div></div></div>';
+      '@keyframes rise { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }';
+    shadow.innerHTML = '<div class="backdrop"><div class="dialog"><form class="panel"><input autofocus placeholder="Buscar en la web o escribir una dirección..." aria-label="Address" autocomplete="off"></form><div class="suggestions"></div></div></div>';
+    shadow.prepend(style);
     document.documentElement.append(host);
     const backdrop = shadow.querySelector('.backdrop');
     const input = shadow.querySelector('input');
@@ -439,6 +441,12 @@ function createTab(address = BLANK_PAGE_URL, makeActive = true) {
   view.webContents.on('did-finish-load', () => {
     applyDefaultScrollbar(view.webContents);
     if (view.webContents.getURL() === BLANK_PAGE_URL) markInitialTabReady(benchmarkState);
+  });
+  view.webContents.on('before-input-event', (event, input) => {
+    if (input.type === 'keyDown' && (input.control || input.meta) && input.key.toLowerCase() === 'l') {
+      event.preventDefault();
+      focusAddress();
+    }
   });
   view.webContents.on('page-favicon-updated', (_event, favicons) => {
     const faviconUrl = favicons.find((candidate) => typeof candidate === 'string') || '';
