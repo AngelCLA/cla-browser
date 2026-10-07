@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { createBenchmarkState, installBenchmarkApi, markInitialTabReady } = require('./benchmark');
+const { normalizeAdBlockerSettings, normalizeHostname, shouldBlockRequest } = require('./ad-blocker');
 const { normalizeBookmarkUrl, normalizeBookmarks, selectBookmarks } = require('./bookmarks');
 const { edition, institutionalLogoUrl, isBlockedUrl, isRestrictedInstaller, loadInstitutionalConfig } = require('./edition');
 const { normalizeHistory } = require('./history');
@@ -37,6 +38,9 @@ let contentFullscreen = false;
 let toolbarSuggestionHeight = 0;
 let bookmarksVisible = true;
 let bookmarksBarMenuItem;
+let adBlockerMenuItem;
+let lightweightModeMenuItem;
+let reinforcedModeMenuItem;
 let nextTabId = 1;
 const tabs = [];
 const closedTabs = [];
@@ -44,6 +48,8 @@ const recentPages = [];
 const historyEntries = [];
 let bookmarks = [];
 let legacyBookmarks = [];
+let adBlockerSettings = normalizeAdBlockerSettings();
+let blockedRequestNotificationTimer;
 
 const ADDRESS_OVERLAY_SCRIPT = `
   (() => {
@@ -168,23 +174,31 @@ function restrictedPageUrl(url) {
   return pageUrl.toString();
 }
 
-function installBlockedSiteFilter() {
-  if (edition !== 'institutional') return;
-  if (institutionalConfig.blockedSites.length) {
-    session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
-      if (details.resourceType === 'mainFrame' && isBlockedUrl(details.url, institutionalConfig.blockedSites)) {
-        callback({ cancel: true });
-        setImmediate(() => {
-          const contents = webContents.fromId(details.webContentsId);
-          if (!contents || contents.isDestroyed()) return;
-          contents.loadURL(restrictedPageUrl(details.url)).catch(() => {});
-        });
-        return;
+function installRequestFilters() {
+  session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
+    if (edition === 'institutional' && details.resourceType === 'mainFrame' && isBlockedUrl(details.url, institutionalConfig.blockedSites)) {
+      callback({ cancel: true });
+      setImmediate(() => {
+        const contents = webContents.fromId(details.webContentsId);
+        if (!contents || contents.isDestroyed()) return;
+        contents.loadURL(restrictedPageUrl(details.url)).catch(() => {});
+      });
+      return;
+    }
+
+    const tab = tabs.find((candidate) => candidate.view.webContents.id === details.webContentsId);
+    if (shouldBlockRequest({ url: details.url, resourceType: details.resourceType, pageUrl: tab?.url, settings: adBlockerSettings })) {
+      if (tab) {
+        tab.blockedRequests += 1;
+        scheduleBlockedRequestNotification();
       }
-      callback({ cancel: false });
-    });
-  }
-  session.defaultSession.on('will-download', (event, item) => {
+      callback({ cancel: true });
+      return;
+    }
+    callback({ cancel: false });
+  });
+
+  if (edition === 'institutional') session.defaultSession.on('will-download', (event, item) => {
     if (!isRestrictedInstaller(item.getFilename())) return;
     event.preventDefault();
     dialog.showMessageBox({
@@ -200,11 +214,19 @@ function getActiveTab() {
 }
 
 function tabState() {
+  const activeTab = getActiveTab();
+  const activeHostname = normalizeHostname(activeTab?.url);
   return {
     activeTabId,
     tabs: tabs.map(({ id, title, url, loading }) => ({ id, title, url, loading, restricted: url.startsWith(RESTRICTED_PAGE_URL) })),
     bookmarks,
     bookmarksVisible,
+    adBlocker: {
+      enabled: adBlockerSettings.enabled,
+      mode: adBlockerSettings.mode,
+      blockedRequests: activeTab?.blockedRequests || 0,
+      siteException: Boolean(activeHostname && adBlockerSettings.exceptions.includes(activeHostname)),
+    },
   };
 }
 
@@ -237,6 +259,7 @@ function loadBrowserData() {
     const data = JSON.parse(fs.readFileSync(browserDataPath(), 'utf8'));
     bookmarksVisible = typeof data.bookmarksVisible === 'boolean' ? data.bookmarksVisible : true;
     legacyBookmarks = normalizeBookmarks(data.bookmarks);
+    adBlockerSettings = normalizeAdBlockerSettings(data.adBlocker);
   } catch {}
 }
 
@@ -255,7 +278,7 @@ function loadBookmarks() {
 
 function saveBrowserData() {
   try {
-    fs.writeFileSync(browserDataPath(), JSON.stringify({ bookmarksVisible }));
+    fs.writeFileSync(browserDataPath(), JSON.stringify({ bookmarksVisible, adBlocker: adBlockerSettings }));
   } catch {}
 }
 
@@ -263,6 +286,45 @@ function saveBookmarks() {
   try {
     fs.writeFileSync(bookmarksPath(), `${JSON.stringify(normalizeBookmarks(bookmarks), null, 2)}\n`);
   } catch {}
+}
+
+function scheduleBlockedRequestNotification() {
+  if (blockedRequestNotificationTimer) return;
+  blockedRequestNotificationTimer = setTimeout(() => {
+    blockedRequestNotificationTimer = undefined;
+    notifyToolbar();
+  }, 120);
+}
+
+function updateAdBlockerMenu() {
+  if (adBlockerMenuItem) adBlockerMenuItem.checked = adBlockerSettings.enabled;
+  if (lightweightModeMenuItem) lightweightModeMenuItem.checked = adBlockerSettings.mode === 'lightweight';
+  if (reinforcedModeMenuItem) reinforcedModeMenuItem.checked = adBlockerSettings.mode === 'reinforced';
+}
+
+function setAdBlockerEnabled(enabled) {
+  adBlockerSettings.enabled = enabled;
+  saveBrowserData();
+  updateAdBlockerMenu();
+  notifyToolbar();
+}
+
+function setAdBlockerMode(mode) {
+  adBlockerSettings.mode = mode === 'reinforced' ? 'reinforced' : 'lightweight';
+  saveBrowserData();
+  updateAdBlockerMenu();
+  notifyToolbar();
+}
+
+function toggleActiveSiteException() {
+  const hostname = normalizeHostname(getActiveTab()?.url);
+  if (!hostname) return;
+  const index = adBlockerSettings.exceptions.indexOf(hostname);
+  if (index === -1) adBlockerSettings.exceptions.push(hostname);
+  else adBlockerSettings.exceptions.splice(index, 1);
+  saveBrowserData();
+  notifyToolbar();
+  getActiveTab()?.view.webContents.reload();
 }
 
 function loadInstitutionalHistory() {
@@ -418,7 +480,7 @@ function createTab(address = BLANK_PAGE_URL, makeActive = true) {
   });
   view.setBackgroundColor('#000000');
   view.webContents.setZoomLevel(0);
-  const tab = { id, view, title: 'Nueva pestaña', url: '', loading: true, favicon: '' };
+  const tab = { id, view, title: 'Nueva pestaña', url: '', loading: true, favicon: '', blockedRequests: 0 };
   tabs.push(tab);
 
   const updateTab = () => {
@@ -432,6 +494,7 @@ function createTab(address = BLANK_PAGE_URL, makeActive = true) {
   view.webContents.on('did-start-loading', () => {
     tab.loading = true;
     tab.favicon = '';
+    tab.blockedRequests = 0;
     notifyToolbar();
   });
   view.webContents.on('did-stop-loading', () => {
@@ -712,6 +775,9 @@ ipcMain.on('browser:action', (_event, action) => {
   if (action === 'devtools') toggleDevTools();
   if (action === 'toggle-bookmark') toggleActiveBookmark();
   if (action === 'show-history') showInstitutionalHistory();
+  if (action === 'toggle-ad-blocker') setAdBlockerEnabled(!adBlockerSettings.enabled);
+  if (action === 'toggle-site-exception') toggleActiveSiteException();
+  if (action === 'toggle-ad-blocker-mode') setAdBlockerMode(adBlockerSettings.mode === 'lightweight' ? 'reinforced' : 'lightweight');
 });
 ipcMain.on('browser:select-tab', (_event, id) => showTab(id));
 ipcMain.on('browser:close-tab', (_event, id) => closeTab(id));
@@ -739,7 +805,7 @@ ipcMain.on('browser:window-action', (_event, action) => {
 });
 
 app.whenReady().then(() => {
-  installBlockedSiteFilter();
+    installRequestFilters();
   loadBrowserData();
   loadBookmarks();
   loadInstitutionalHistory();
@@ -774,8 +840,19 @@ app.whenReady().then(() => {
       { label: 'Añadir o quitar marcador', accelerator: 'CommandOrControl+D', click: toggleActiveBookmark },
       { id: 'toggle-bookmarks-bar', label: 'Mostrar u ocultar barra de marcadores', type: 'checkbox', checked: bookmarksVisible, accelerator: 'CommandOrControl+Shift+B', click: toggleBookmarksBar },
     ] },
+    { label: 'Bloqueador', submenu: [
+      { id: 'toggle-ad-blocker', label: 'Activar bloqueador', type: 'checkbox', checked: adBlockerSettings.enabled, click: (item) => setAdBlockerEnabled(item.checked) },
+      { type: 'separator' },
+      { id: 'ad-blocker-lightweight', label: 'Modo ligero', type: 'radio', checked: adBlockerSettings.mode === 'lightweight', click: () => setAdBlockerMode('lightweight') },
+      { id: 'ad-blocker-reinforced', label: 'Modo reforzado', type: 'radio', checked: adBlockerSettings.mode === 'reinforced', click: () => setAdBlockerMode('reinforced') },
+      { type: 'separator' },
+      { label: 'Permitir anuncios en este sitio', click: toggleActiveSiteException },
+    ] },
   ]);
   bookmarksBarMenuItem = menu.getMenuItemById('toggle-bookmarks-bar');
+  adBlockerMenuItem = menu.getMenuItemById('toggle-ad-blocker');
+  lightweightModeMenuItem = menu.getMenuItemById('ad-blocker-lightweight');
+  reinforcedModeMenuItem = menu.getMenuItemById('ad-blocker-reinforced');
   Menu.setApplicationMenu(menu);
   createWindow();
   installBenchmarkApi(benchmarkState, {

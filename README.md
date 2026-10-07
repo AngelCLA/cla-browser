@@ -104,6 +104,7 @@ No compares un valor unico como si fuera una clasificacion absoluta. CLA Browser
 - Scroll oscuro de CLA Browser cuando el sitio no aporta uno propio. Las reglas del sitio prevalecen sobre el estilo predeterminado.
 - El navegador usa el modo oscuro de forma predeterminada: las páginas que respetan `prefers-color-scheme` y sus favicons se cargan con su variante oscura.
 - Marcadores persistentes: la estrella añade o quita la página activa y la barra permite abrirlos.
+- Bloqueador de anuncios y rastreadores activado de forma predeterminada. El modo ligero bloquea dominios publicitarios conocidos con coste mínimo; el modo reforzado añade patrones de URL para cubrir más anuncios, incluidos algunos recursos de vídeo. El escudo de la barra permite activarlo o desactivarlo y muestra las solicitudes bloqueadas; el menú "Bloqueador" permite elegir el modo y crear una excepción para el sitio actual.
 
 ### Marcadores
 
