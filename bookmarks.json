@@ -1,5 +1,5 @@
 [
   { "id": "google", "title": "Google", "url": "https://www.google.com/", "category": "search" },
   { "id": "google-drive", "title": "Google Drive", "url": "https://drive.google.com/", "category": "productivity" },
-  { "id": "gmail", "title": "Gmail", "url": "https://mail.google.com/", "category": "productivity" }
+  { "id": "gmail", "title": "Gmail", "url": "https://mail.google.com/mail/u/0/#inbox", "category": "productivity" }
 ]
