@@ -7,7 +7,7 @@ const { normalizeAdBlockerSettings, normalizeHostname, shouldBlockRequest } = re
 const { normalizeBookmarkUrl, normalizeBookmarks, selectBookmarks } = require('./bookmarks');
 const { edition, institutionalLogoUrl, isBlockedUrl, isRestrictedInstaller, loadInstitutionalConfig } = require('./edition');
 const { normalizeHistory } = require('./history');
-const { isAllowedOAuthPopupUrl } = require('./oauth-popup-policy');
+const { installPopupWindowPolicy } = require('./popup-window');
 
 const TOOLBAR_HEIGHT = 76;
 const BOOKMARKS_BAR_HEIGHT = 32;
@@ -566,9 +566,7 @@ function createTab(address = BLANK_PAGE_URL, makeActive = true) {
     }
     notifyToolbar();
   });
-  view.webContents.setWindowOpenHandler(({ url }) => {
-    return { action: isAllowedOAuthPopupUrl(url) ? 'allow' : 'deny' };
-  });
+  installPopupWindowPolicy(view.webContents, path.join(ASSETS_DIR, 'icon.png'));
   view.webContents.loadURL(normalizeAddress(address));
   if (makeActive) showTab(id);
   else notifyToolbar();
