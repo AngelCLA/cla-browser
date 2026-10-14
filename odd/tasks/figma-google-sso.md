@@ -25,11 +25,11 @@ The browser replaces every `window.open` request with a standalone tab and denie
 - Feature branch: `fix/figma-google-sso` (created from `main` before implementation).
 
 ## Tasks
-- [ ] **SSO-1** Add an exact-host HTTPS OAuth popup allowlist, validate navigation IPC sender, and guard `loadURL` against destroyed WebContents; test the URL policy.
+- [x] **SSO-1** Add an exact-host HTTPS OAuth popup allowlist, validate navigation IPC sender, and guard `loadURL` against destroyed WebContents; test the URL policy.
   - Acceptance: only allowlisted HTTPS origins produce an Electron-managed popup; all other popup URLs are denied; non-toolbar navigation IPC is ignored; absent/destroyed tab contents do not reach `loadURL`.
   - Checks: `npm test` and a parent spot-check of the reported code paths.
-  - Verification route: delegated writer self-verification; risk is currently unassessable before implementation, so reassess after the work-unit commit.
-  - Work-unit commit: pending.
+  - Verification route: delegated writer self-verification plus parent spot-check. Post-commit risk assessment: `medium`; `review_due=false`; `under_budget` (RDD on).
+  - Work-unit commit: `ec7aff3` (`fix(auth): preserve trusted OAuth popup flow`).
 
 ## Progress and next step
 Implemented in `src/main/index.js` with the pure policy in `src/main/oauth-popup-policy.js` and regression coverage in `test/oauth-popup-policy.test.js`.
@@ -39,6 +39,6 @@ Implemented in `src/main/index.js` with the pure policy in `src/main/oauth-popup
 - `npm test`: 16 passed, 0 failed (writer run and parent spot-check).
 - `git diff --check`: passed.
 - Runtime Electron OAuth smoke test: not run; popup opener behavior was not exercised in a live app.
-- Work-unit commit: pending.
+- Work-unit commit: `ec7aff3` (`fix(auth): preserve trusted OAuth popup flow`).
 
-Next: inspect the final diff, commit this behavior unit, and follow the native review assessment/lifecycle for the committed candidate.
+Task complete. The medium-risk candidate is below the 400-line delivery budget, so no native review was due for this commit. Live Electron OAuth smoke testing remains an optional follow-up.
