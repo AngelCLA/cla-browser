@@ -31,3 +31,16 @@ test('generated packaging output is ignored by git', () => {
   const gitignore = fs.readFileSync(path.join(root, '.gitignore'), 'utf8');
   assert.match(gitignore, /^dist\/$/m);
 });
+
+test('Windows app, portable executable, and installer use the CLA Browser icon', () => {
+  const iconPath = 'src/assets/icon.png';
+  assert.equal(build.win.icon, iconPath);
+
+  const icon = fs.readFileSync(path.join(root, iconPath));
+  assert.equal(icon.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+  assert.ok(icon.readUInt32BE(16) >= 256);
+  assert.ok(icon.readUInt32BE(20) >= 256);
+
+  assert.equal(build.nsis.installerIcon ?? build.win.icon, iconPath);
+  assert.equal(build.portable.icon ?? build.win.icon, iconPath);
+});
