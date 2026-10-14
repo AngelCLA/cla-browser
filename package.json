@@ -43,9 +43,9 @@
     }
   },
   "dependencies": {
-    "electron": "^44.5.1"
   },
   "devDependencies": {
+    "electron": "^44.5.1",
     "electron-builder": "^26.15.3",
     "playwright": "^1.63.0"
   }
