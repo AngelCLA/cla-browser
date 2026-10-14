@@ -33,8 +33,8 @@ The browser replaces every `window.open` request with a standalone tab and denie
 - [x] **SSO-2** Expand legitimate HTTPS popups while denying destinations classified as advertising/tracking by the existing lightweight domain list.
   - Acceptance: any valid HTTPS popup destination outside that list receives a real Electron popup; known ad/tracker destinations, malformed URLs, and non-HTTPS protocols are denied. Ad-blocker toggle state does not permit known ad/tracker popups.
   - Checks: `npm test` and parent spot-check of the classifier integration.
-  - Verification route: delegated writer self-verification plus parent spot-check. Post-commit RDD assessment: pending.
-  - Work-unit commit: pending.
+  - Verification route: delegated writer self-verification plus parent spot-check. Post-commit RDD assessment: `medium`; `review_due=false`; `under_budget` (RDD on).
+  - Work-unit commit: `a603945` (`fix(auth): allow non-ad HTTPS popups`).
 
 ## Progress and next step
 Implemented in `src/main/index.js` with the pure policy in `src/main/oauth-popup-policy.js` and regression coverage in `test/oauth-popup-policy.test.js`.
@@ -48,4 +48,4 @@ Implemented in `src/main/index.js` with the pure policy in `src/main/oauth-popup
 
 SSO-1 is complete. The medium-risk candidate was below the 400-line delivery budget, so no native review was due for its commit. Live Electron OAuth smoke testing remains an optional follow-up.
 
-SSO-2 implementation and tests are complete. The existing lightweight ad/tracker classifier now blocks popup destinations independently of the normal blocker toggle and site exceptions. `npm test` passed (17/17), including the parent spot-check. Post-commit RDD assessment and the work-unit commit remain pending. Live Electron popup smoke testing remains pending.
+SSO-2 implementation and tests are complete. The existing lightweight ad/tracker classifier now blocks popup destinations independently of the normal blocker toggle and site exceptions. TDD RED observed: 16 passed, 1 failed on the new legitimate-app case. GREEN: `npm test` passed (17/17), including the parent spot-check. Work-unit commit: `a603945` (`fix(auth): allow non-ad HTTPS popups`). Post-commit RDD assessment returned `medium`, `review_due=false`, `under_budget`; no native review was due. Live Electron popup smoke testing remains pending.
