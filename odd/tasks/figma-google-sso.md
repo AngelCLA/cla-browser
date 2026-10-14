@@ -1,15 +1,15 @@
 # Figma Google SSO popup recovery
 
 ## Objective
-Restore Figma Google sign-in while preventing stale or untrusted IPC navigation from crashing the Electron main process.
+Restore Figma Google sign-in, allow legitimate HTTPS popups broadly, and prevent known advertising/tracking popups and stale or untrusted IPC navigation.
 
 ## Problem and rationale
 The browser replaces every `window.open` request with a standalone tab and denies the popup. OAuth completion needs a real opener relationship, leaving Figma at its callback URL. Navigation IPC also accepts arbitrary senders and the active tab's WebContents may have been destroyed before `loadURL` is called.
 
 ## Scope and constraints
-- Allow a real Electron popup only for HTTPS auth URLs on exact Figma and Google account hosts; keep other popups denied and ordinary popup behavior unchanged.
+- Allow real Electron popups for HTTPS destinations unless their domain is classified in the existing lightweight advertising/tracking domain list; keep other protocols denied.
 - Validate toolbar ownership of `browser:navigate` and avoid navigating a missing or destroyed WebContents.
-- Add focused deterministic tests for the pure popup URL policy.
+- Add focused deterministic tests for the popup URL policy, including representative advertising/tracking domains.
 - Do not broaden permissions, alter account credentials, or change unrelated pre-existing user files.
 
 ## Authorized scope
@@ -30,6 +30,11 @@ The browser replaces every `window.open` request with a standalone tab and denie
   - Checks: `npm test` and a parent spot-check of the reported code paths.
   - Verification route: delegated writer self-verification plus parent spot-check. Post-commit risk assessment: `medium`; `review_due=false`; `under_budget` (RDD on).
   - Work-unit commit: `ec7aff3` (`fix(auth): preserve trusted OAuth popup flow`).
+- [x] **SSO-2** Expand legitimate HTTPS popups while denying destinations classified as advertising/tracking by the existing lightweight domain list.
+  - Acceptance: any valid HTTPS popup destination outside that list receives a real Electron popup; known ad/tracker destinations, malformed URLs, and non-HTTPS protocols are denied. Ad-blocker toggle state does not permit known ad/tracker popups.
+  - Checks: `npm test` and parent spot-check of the classifier integration.
+  - Verification route: delegated writer self-verification plus parent spot-check. Post-commit RDD assessment: pending.
+  - Work-unit commit: pending.
 
 ## Progress and next step
 Implemented in `src/main/index.js` with the pure policy in `src/main/oauth-popup-policy.js` and regression coverage in `test/oauth-popup-policy.test.js`.
@@ -41,4 +46,6 @@ Implemented in `src/main/index.js` with the pure policy in `src/main/oauth-popup
 - Runtime Electron OAuth smoke test: not run; popup opener behavior was not exercised in a live app.
 - Work-unit commit: `ec7aff3` (`fix(auth): preserve trusted OAuth popup flow`).
 
-Task complete. The medium-risk candidate is below the 400-line delivery budget, so no native review was due for this commit. Live Electron OAuth smoke testing remains an optional follow-up.
+SSO-1 is complete. The medium-risk candidate was below the 400-line delivery budget, so no native review was due for its commit. Live Electron OAuth smoke testing remains an optional follow-up.
+
+SSO-2 implementation and tests are complete. The existing lightweight ad/tracker classifier now blocks popup destinations independently of the normal blocker toggle and site exceptions. `npm test` passed (17/17), including the parent spot-check. Post-commit RDD assessment and the work-unit commit remain pending. Live Electron popup smoke testing remains pending.

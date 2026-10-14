@@ -1,13 +1,24 @@
 "use strict";
 
-const ALLOWED_OAUTH_HOSTS = new Set(["www.figma.com", "accounts.google.com"]);
+const { shouldBlockRequest } = require("./ad-blocker");
+
+const POPUP_AD_BLOCKER_SETTINGS = {
+  enabled: true,
+  mode: "lightweight",
+  exceptions: [],
+};
 
 function isAllowedOAuthPopupUrl(value) {
   if (typeof value !== "string") return false;
 
   try {
     const url = new URL(value);
-    return url.protocol === "https:" && ALLOWED_OAUTH_HOSTS.has(url.hostname);
+    return url.protocol === "https:" && !shouldBlockRequest({
+      url: url.href,
+      resourceType: "other",
+      pageUrl: "",
+      settings: POPUP_AD_BLOCKER_SETTINGS,
+    });
   } catch {
     return false;
   }
