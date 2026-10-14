@@ -23,3 +23,16 @@ npm start
 ```bash
 npm test
 ```
+
+## Windows packaging
+
+Build the portable executable and NSIS installer together on Windows. Node.js and npm must be installed first; the build dependencies are installed with `npm install`.
+
+```bash
+npm run build:win
+```
+
+The generated, git-ignored files are:
+
+- `dist/CLA Browser.exe` — portable app
+- `dist/CLA Browser Setup.exe` — installer

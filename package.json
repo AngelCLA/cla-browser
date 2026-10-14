@@ -6,16 +6,46 @@
   "scripts": {
     "test": "node --test",
     "start": "electron .",
-    "benchmark": "node bench/run.js"
+    "benchmark": "node bench/run.js",
+    "build:win": "electron-builder --win nsis portable --x64"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
+  "build": {
+    "productName": "CLA Browser",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "artifactName": "CLA Browser Setup.exe"
+    },
+    "portable": {
+      "artifactName": "CLA Browser.exe"
+    }
+  },
   "dependencies": {
     "electron": "^44.5.1"
   },
   "devDependencies": {
+    "electron-builder": "^26.15.3",
     "playwright": "^1.63.0"
   }
 }
