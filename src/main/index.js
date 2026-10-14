@@ -7,6 +7,7 @@ const { normalizeAdBlockerSettings, normalizeHostname, shouldBlockRequest } = re
 const { normalizeBookmarkUrl, normalizeBookmarks, selectBookmarks } = require('./bookmarks');
 const { edition, institutionalLogoUrl, isBlockedUrl, isRestrictedInstaller, loadInstitutionalConfig } = require('./edition');
 const { normalizeHistory } = require('./history');
+const { isAllowedOAuthPopupUrl } = require('./oauth-popup-policy');
 
 const TOOLBAR_HEIGHT = 76;
 const BOOKMARKS_BAR_HEIGHT = 32;
@@ -566,8 +567,7 @@ function createTab(address = BLANK_PAGE_URL, makeActive = true) {
     notifyToolbar();
   });
   view.webContents.setWindowOpenHandler(({ url }) => {
-    createTab(url, true);
-    return { action: 'deny' };
+    return { action: isAllowedOAuthPopupUrl(url) ? 'allow' : 'deny' };
   });
   view.webContents.loadURL(normalizeAddress(address));
   if (makeActive) showTab(id);
@@ -598,11 +598,13 @@ function closeTab(id = activeTabId) {
 function navigate(address) {
   const tab = getActiveTab();
   if (!tab) return;
+  const webContents = tab.view?.webContents;
+  if (!webContents || webContents.isDestroyed()) return;
 
   const url = normalizeAddress(address);
   tab.url = url === BLANK_PAGE_URL ? '' : url;
   notifyToolbar();
-  tab.view.webContents.loadURL(url);
+  webContents.loadURL(url);
 }
 
 function focusAddress() {
@@ -782,7 +784,10 @@ ipcMain.handle('browser:get-history', (event) => {
   if (edition !== 'institutional' || !event.sender.getURL().startsWith(HISTORY_PAGE_URL)) return [];
   return historyEntries;
 });
-ipcMain.on('browser:navigate', (_event, address) => navigate(typeof address === 'string' ? address : ''));
+ipcMain.on('browser:navigate', (event, address) => {
+  if (event.sender !== toolbarView?.webContents) return;
+  navigate(typeof address === 'string' ? address : '');
+});
 ipcMain.on('browser:show-history', (event) => {
   if (event.sender === getActiveTab()?.view.webContents) showInstitutionalHistory();
 });
