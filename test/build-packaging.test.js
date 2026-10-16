@@ -44,3 +44,44 @@ test('Windows app, portable executable, and installer use the CLA Browser icon',
   assert.equal(build.nsis.installerIcon ?? build.win.icon, iconPath);
   assert.equal(build.portable.icon ?? build.win.icon, iconPath);
 });
+
+test('only NSIS includes browser registration with scoped capabilities and quoted commands', () => {
+  assert.equal(build.nsis.include, 'build/installer.nsh');
+  assert.equal(build.portable.include, undefined);
+  assert.equal(build.protocols, undefined);
+  assert.equal(build.fileAssociations, undefined);
+  const script = fs.readFileSync(path.join(root, build.nsis.include), 'utf8');
+  assert.match(script, /!macro customInstall/);
+  assert.match(script, /!macro customUnInstall/);
+  assert.match(script, /Software\\Clients\\StartMenuInternet\\CLA Browser/);
+  assert.match(script, /WriteRegStr SHELL_CONTEXT "Software\\RegisteredApplications" "CLA Browser"/);
+  for (const [association, progId] of [['.htm', 'CLA Browser.HTML'], ['.html', 'CLA Browser.HTML'],
+    ['http', 'CLA Browser.URL'], ['https', 'CLA Browser.URL']]) {
+    assert.ok(script.includes(`"${association}" "${progId}"`));
+  }
+  for (const field of ['ApplicationName', 'ApplicationDescription', 'ApplicationIcon']) {
+    assert.ok(script.includes(`"${field}"`));
+  }
+  assert.ok(script.includes(`'"$INSTDIR\\\${APP_EXECUTABLE_FILENAME}" "%1"'`));
+  assert.match(script, /SHChangeNotify/);
+  assert.doesNotMatch(script, /UserChoice|WriteReg\w+ HK(?:CR|CU|LM)/);
+  assert.doesNotMatch(script, /WriteReg\w+ SHELL_CONTEXT "Software\\Classes\\(?:https?|\.html?)"/);
+});
+
+test('uninstall checks ownership before removing only app-owned registration', () => {
+  const script = fs.readFileSync(path.join(root, 'build/installer.nsh'), 'utf8');
+  const uninstall = script.slice(script.indexOf('!macro customUnInstall'));
+  assert.match(uninstall, /ReadRegStr .* SHELL_CONTEXT .* "InstallPath"/);
+  assert.match(uninstall, /\$INSTDIR/);
+  assert.match(uninstall, /DeleteRegValue SHELL_CONTEXT "Software\\RegisteredApplications" "CLA Browser"/);
+  assert.doesNotMatch(uninstall, /DeleteRegKey SHELL_CONTEXT "Software\\(?:Classes|RegisteredApplications)"/);
+  const deletions = [...uninstall.matchAll(/DeleteRegKey SHELL_CONTEXT "([^"]+)"/g)];
+  assert.ok(deletions.length > 0);
+  for (const [, key] of deletions) assert.match(key, /CLA Browser|\$\{CLA_/);
+  assert.match(uninstall, /\$\{If\} \$0 == "\$INSTDIR"[\s\S]*?DeleteRegKey SHELL_CONTEXT "\$\{CLA_CLIENT\}"\s*\$\{EndIf\}/);
+  for (const progId of ['CLA Browser.HTML', 'CLA Browser.URL']) {
+    const guard = `ReadRegStr $0 SHELL_CONTEXT "Software\\Classes\\${progId}\\shell\\open\\command" ""`;
+    const deletion = `DeleteRegKey SHELL_CONTEXT "Software\\Classes\\${progId}"`;
+    assert.ok(uninstall.includes(`${guard}\n  \${If} $0 == '"$INSTDIR\\\${APP_EXECUTABLE_FILENAME}" "%1"'\n    ${deletion}\n  \${EndIf}`));
+  }
+});

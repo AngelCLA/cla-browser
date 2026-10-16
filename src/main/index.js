@@ -1,4 +1,10 @@
 const { app, BaseWindow, WebContentsView, clipboard, dialog, ipcMain, Menu, nativeTheme, net, session, webContents } = require('electron');
+// Stop secondary processes before loading configuration or registering startup work.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+  return;
+}
+
 const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
@@ -8,6 +14,7 @@ const { normalizeBookmarkUrl, normalizeBookmarks, selectBookmarks } = require('.
 const { edition, institutionalLogoUrl, isBlockedUrl, isRestrictedInstaller, loadInstitutionalConfig } = require('./edition');
 const { normalizeHistory } = require('./history');
 const { installPopupWindowPolicy } = require('./popup-window');
+const { createExternalLaunchHandler } = require('./external-launch');
 
 const TOOLBAR_HEIGHT = 76;
 const BOOKMARKS_BAR_HEIGHT = 32;
@@ -43,6 +50,7 @@ let bookmarksBarMenuItem;
 let adBlockerMenuItem;
 let lightweightModeMenuItem;
 let reinforcedModeMenuItem;
+let browserReady = false;
 let nextTabId = 1;
 const tabs = [];
 const closedTabs = [];
@@ -52,6 +60,20 @@ let bookmarks = [];
 let legacyBookmarks = [];
 let adBlockerSettings = normalizeAdBlockerSettings();
 let blockedRequestNotificationTimer;
+const externalLaunch = createExternalLaunchHandler({
+  argv: process.argv,
+  isPackaged: app.isPackaged,
+  openTab: (destination) => createTab(destination),
+  focusWindow: () => {
+    if (!window || window.isDestroyed()) return;
+    if (window.isMinimized()) window.restore();
+    window.focus();
+  },
+});
+app.on('second-instance', (_event, commandLine) => {
+  externalLaunch.receive(commandLine);
+  if (browserReady && !window) createWindow();
+});
 
 const ADDRESS_OVERLAY_SCRIPT = `
   (() => {
@@ -566,7 +588,7 @@ function createTab(address = BLANK_PAGE_URL, makeActive = true) {
     }
     notifyToolbar();
   });
-  installPopupWindowPolicy(view.webContents, path.join(ASSETS_DIR, 'icon.png'));
+  installPopupWindowPolicy(view.webContents, path.join(ASSETS_DIR, 'icon.png'), createTab);
   view.webContents.loadURL(normalizeAddress(address));
   if (makeActive) showTab(id);
   else notifyToolbar();
@@ -760,6 +782,7 @@ function createWindow() {
     layoutViews();
   });
   window.on('closed', () => {
+    externalLaunch.pause();
     for (const tab of tabs) tab.view.webContents.close();
     tabs.length = 0;
     closedTabs.length = 0;
@@ -770,7 +793,7 @@ function createWindow() {
     window = undefined;
   });
 
-  createTab();
+  externalLaunch.ready();
 }
 
 ipcMain.handle('browser:get-state', () => tabState());
@@ -835,7 +858,7 @@ ipcMain.on('browser:window-action', (_event, action) => {
 });
 
 app.whenReady().then(() => {
-    installRequestFilters();
+  installRequestFilters();
   loadBrowserData();
   loadBookmarks();
   loadInstitutionalHistory();
@@ -884,6 +907,7 @@ app.whenReady().then(() => {
   lightweightModeMenuItem = menu.getMenuItemById('ad-blocker-lightweight');
   reinforcedModeMenuItem = menu.getMenuItemById('ad-blocker-reinforced');
   Menu.setApplicationMenu(menu);
+  browserReady = true;
   createWindow();
   installBenchmarkApi(benchmarkState, {
     app,

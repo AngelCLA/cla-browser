@@ -36,7 +36,8 @@
       ]
     },
     "nsis": {
-      "artifactName": "CLA Browser Setup.exe"
+      "artifactName": "CLA Browser Setup.exe",
+      "include": "build/installer.nsh"
     },
     "portable": {
       "artifactName": "CLA Browser.exe"
