@@ -806,6 +806,19 @@ ipcMain.handle('browser:get-history', (event) => {
   if (edition !== 'institutional' || !event.sender.getURL().startsWith(HISTORY_PAGE_URL)) return [];
   return historyEntries;
 });
+ipcMain.handle('browser:get-shortcuts', (event) => {
+  if (!tabs.some((tab) => tab.view.webContents === event.sender) || event.sender.getURL() !== BLANK_PAGE_URL) return [];
+  return bookmarks.map(({ title, url }) => ({ title, url }));
+});
+ipcMain.handle('browser:open-shortcut', (event, url) => {
+  if (getActiveTab()?.view.webContents !== event.sender || event.sender.getURL() !== BLANK_PAGE_URL) return false;
+  if (typeof url !== 'string') return false;
+  const normalizedUrl = normalizeBookmarkUrl(url);
+  const bookmark = bookmarks.find((candidate) => candidate.url === normalizedUrl);
+  if (!bookmark) return false;
+  navigate(bookmark.url);
+  return true;
+});
 ipcMain.on('browser:navigate', (event, address) => {
   if (event.sender !== toolbarView?.webContents) return;
   navigate(typeof address === 'string' ? address : '');

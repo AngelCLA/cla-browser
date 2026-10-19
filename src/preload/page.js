@@ -4,6 +4,11 @@ contextBridge.exposeInMainWorld('claBrowserHistory', {
   getEntries: () => ipcRenderer.invoke('browser:get-history'),
 });
 
+contextBridge.exposeInMainWorld('claBrowserShortcuts', {
+  getBookmarks: () => ipcRenderer.invoke('browser:get-shortcuts'),
+  openBookmark: (url) => ipcRenderer.invoke('browser:open-shortcut', url),
+});
+
 let lastZoomAt = 0;
 
 function sendZoom(direction) {

@@ -21,6 +21,9 @@ for (const edition of ['personal', 'institutional']) {
     const output = path.join(ROOT, '.toolbar-tabs-runtime', edition);
     await fs.mkdir(output, { recursive: true });
     const profile = await fs.mkdtemp(path.join(output, 'run-'));
+    await fs.writeFile(path.join(profile, 'bookmarks.json'), JSON.stringify([
+      { title: 'Saved shortcut', url: 'https://example.test/shortcut' },
+    ]));
     // Keep Playwright artifacts and Electron temporary data inside the approved output.
     const previousTemp = { TEMP: process.env.TEMP, TMP: process.env.TMP };
     process.env.TEMP = profile;
@@ -105,6 +108,30 @@ for (const edition of ['personal', 'institutional']) {
       });
       assert.equal(newTab.search, edition === 'personal' ? 'none' : 'block');
       assert.equal(newTab.logo, edition === 'personal' ? 'CLA Browser' : 'Institucion');
+      assert.deepEqual(await electron.evaluate(async ({ webContents }, id) => {
+        const page = webContents.fromId(id);
+        return page.executeJavaScript(`({
+          button: document.querySelector('[aria-label="Open shortcuts"]')?.tagName,
+          bridge: typeof window.claBrowserShortcuts?.getBookmarks,
+        })`);
+      }, newTab.webContentsId), { button: 'BUTTON', bridge: 'function' });
+      const shortcutsPage = await electron.evaluate(({ webContents }, id) => webContents.fromId(id).executeJavaScript(`(async () => {
+        const unsafeAccepted = await window.claBrowserShortcuts.openBookmark('javascript:alert(1)');
+        const button = document.querySelector('[aria-label="Open shortcuts"]');
+        button.click();
+        const panel = document.querySelector('#shortcuts-panel');
+        for (let attempt = 0; attempt < 100 && !panel.querySelector('button'); attempt += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        const label = panel?.textContent;
+        const entry = panel?.querySelector('button');
+        entry?.click();
+        return { expanded: button.getAttribute('aria-expanded'), label, unsafeAccepted };
+      })()`), newTab.webContentsId);
+      assert.equal(shortcutsPage.expanded, 'true');
+      assert.match(shortcutsPage.label, /Saved shortcut/);
+      assert.equal(shortcutsPage.unsafeAccepted, false, 'untrusted non-bookmark destinations are rejected');
+      await eventually(async () => (await state()).tabs[0].url, 'https://example.test/shortcut');
       assert.deepEqual(await arrows(), hiddenArrows, 'a single tab reserves no arrow space');
       await assertAddAdjacent();
       assert.deepEqual(await dom(() => {
