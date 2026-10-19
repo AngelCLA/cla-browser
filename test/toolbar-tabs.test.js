@@ -81,6 +81,22 @@ for (const edition of ['personal', 'institutional']) {
       const hiddenArrows = Array.from({ length: 2 }, () => ({ hidden: true, display: 'none', width: 0 }));
       const shownArrows = Array.from({ length: 2 }, () => ({ hidden: false, display: 'grid', width: 28 }));
       const resize = (width) => electron.evaluate(({ BaseWindow }, width) => BaseWindow.getAllWindows()[0].setContentSize(width, 600), width);
+      const assertAddAdjacent = async () => {
+        const geometry = await dom(() => {
+          const last = document.querySelector('#tab-list').lastElementChild.getBoundingClientRect();
+          const add = document.querySelector('.new-tab');
+          const bounds = add.getBoundingClientRect();
+          const controls = document.querySelector('#window-controls').getBoundingClientRect();
+          return {
+            gap: bounds.left - last.right, margin: parseFloat(getComputedStyle(add).marginLeft),
+            contained: bounds.right <= controls.left && Math.abs(controls.right - innerWidth) < 1,
+            hit: document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)?.closest('button') === add,
+          };
+        });
+        assert.ok(Math.abs(geometry.gap - geometry.margin) < 1, `new-tab button follows the last tab: ${JSON.stringify(geometry)}`);
+        assert.equal(geometry.contained, true, 'window controls stay right-aligned without overlap');
+        assert.equal(geometry.hit, true, 'new-tab button is pointer-reachable');
+      };
       await eventually(async () => (await state()).tabs.length, 1);
       await eventually(async () => (await state()).tabs[0].loading, false);
       const newTab = await electron.evaluate(async ({ webContents }) => {
@@ -90,12 +106,15 @@ for (const edition of ['personal', 'institutional']) {
       assert.equal(newTab.search, edition === 'personal' ? 'none' : 'block');
       assert.equal(newTab.logo, edition === 'personal' ? 'CLA Browser' : 'Institucion');
       assert.deepEqual(await arrows(), hiddenArrows, 'a single tab reserves no arrow space');
+      await assertAddAdjacent();
       assert.deepEqual(await dom(() => {
         const tabs = document.querySelector('#tabs');
         const list = document.querySelector('#tab-list');
         const previous = document.querySelector('#tabs-previous').getBoundingClientRect();
         const first = list.firstElementChild.getBoundingClientRect();
-        const emptyX = list.getBoundingClientRect().right - 2;
+        const add = document.querySelector('.new-tab').getBoundingClientRect();
+        const controls = document.querySelector('#window-controls').getBoundingClientRect();
+        const emptyX = (add.right + controls.left) / 2;
         return {
           brand: Boolean(tabs.querySelector('#brand, img')),
           paddingLeft: getComputedStyle(tabs).paddingLeft,
@@ -109,7 +128,7 @@ for (const edition of ['personal', 'institutional']) {
         };
       }), {
         brand: false, paddingLeft: '0px', previousLeft: 0, previousWidth: 0,
-        listLeft: 0, firstLeft: 0, emptyHit: 'tab-list',
+        listLeft: 0, firstLeft: 0, emptyHit: 'tabs',
         regions: ['drag', 'drag', 'no-drag', 'no-drag', 'no-drag', 'no-drag'],
       }, 'fitting tabs start at the left edge; unused strip is draggable');
       assert.equal(await dom(() => document.querySelector('#tab-list').getAttribute('role')), 'tablist');
@@ -117,9 +136,13 @@ for (const edition of ['personal', 'institutional']) {
 
       await electron.evaluate(({ BaseWindow }) => BaseWindow.getAllWindows()[0].setContentSize(500, 600));
       for (let i = 0; i < 9; i += 1) {
-        await dom(() => window.browser.action('new-tab'));
+        if (i === 0 || i === 8) await click('.new-tab');
+        else await dom(() => window.browser.action('new-tab'));
         await eventually(async () => (await state()).tabs.length, i + 2);
-        if (i === 0) assert.deepEqual(await arrows(), hiddenArrows, 'two tabs fit at narrow width');
+        if (i === 0) {
+          assert.deepEqual(await arrows(), hiddenArrows, 'two tabs fit at narrow width');
+          await assertAddAdjacent();
+        }
       }
       await eventually(async () => (await state()).tabs.every((tab) => !tab.loading), true);
       const ids = (await state()).tabs.map((tab) => tab.id);
@@ -130,9 +153,10 @@ for (const edition of ['personal', 'institutional']) {
         const list = document.querySelector('#tab-list');
         const controls = document.querySelector('#window-controls').getBoundingClientRect();
         const add = document.querySelector('.new-tab').getBoundingClientRect();
-        return { overflow: list.scrollWidth > list.clientWidth, contained: controls.right <= innerWidth && add.right <= controls.left, height: document.querySelector('#tabs').offsetHeight };
+        const hit = document.elementFromPoint(add.x + add.width / 2, add.y + add.height / 2)?.closest('button');
+        return { overflow: list.scrollWidth > list.clientWidth, contained: Math.abs(controls.right - innerWidth) < 1 && add.left >= 0 && add.right <= controls.left, addReachable: hit?.classList.contains('new-tab'), height: document.querySelector('#tabs').offsetHeight };
       });
-      assert.deepEqual(dimensions, { overflow: true, contained: true, height: 34 });
+      assert.deepEqual(dimensions, { overflow: true, contained: true, addReachable: true, height: 34 });
       for (const [control, edge] of [['#tabs-previous', ids[0]], ['#tabs-next', activeId]]) {
         for (let attempt = 0; attempt < 20 && !await visible(edge); attempt += 1) {
           const before = await dom(() => document.querySelector('#tab-list').scrollLeft);
@@ -268,12 +292,14 @@ for (const edition of ['personal', 'institutional']) {
       // Tabs have a viewport-relative max-width; measure after widening, not at 500px.
       await resize(1400);
       await eventually(arrows, hiddenArrows, 'a wide window fits the remaining tabs');
+      await assertAddAdjacent();
       // Measure the fit boundary without assuming a tab count or a control width.
       const fittingWidth = await dom(() => {
         const list = document.querySelector('#tab-list');
         const content = [...list.children].reduce((width, tab) => width + tab.getBoundingClientRect().width, 0);
-        const arrows = [...document.querySelectorAll('.tab-scroll')].reduce((width, button) => width + button.getBoundingClientRect().width, 0);
-        return Math.ceil(content + innerWidth - list.getBoundingClientRect().width - arrows) + 1;
+        const add = document.querySelector('.new-tab');
+        const fixed = document.querySelector('#window-controls').getBoundingClientRect().width + add.getBoundingClientRect().width + parseFloat(getComputedStyle(add).marginLeft);
+        return Math.ceil(content + fixed) + 1;
       });
       await resize(500);
       await eventually(arrows, shownArrows);
@@ -282,11 +308,15 @@ for (const edition of ['personal', 'institutional']) {
       assert.equal(await nativeFocus(), false);
       await resize(fittingWidth);
       await eventually(arrows, hiddenArrows, 'widening reclaims both arrow slots at the fit threshold');
+      await assertAddAdjacent();
       assert.deepEqual(await dom(() => {
         const list = document.querySelector('#tab-list');
         const content = [...list.children].reduce((width, tab) => width + tab.getBoundingClientRect().width, 0);
         const slots = [...document.querySelectorAll('.tab-scroll')].reduce((width, button) => width + parseFloat(getComputedStyle(button).flexBasis), 0);
-        return { fitsWithoutArrows: content <= list.clientWidth, wouldOverflowWithArrows: content > list.clientWidth - slots };
+        const add = document.querySelector('.new-tab');
+        const fixed = document.querySelector('#window-controls').getBoundingClientRect().width + add.getBoundingClientRect().width + parseFloat(getComputedStyle(add).marginLeft);
+        const available = innerWidth - fixed;
+        return { fitsWithoutArrows: content <= available, wouldOverflowWithArrows: content > available - slots };
       }), { fitsWithoutArrows: true, wouldOverflowWithArrows: true }, 'arrow slots would create phantom overflow at this width');
       assert.equal(await nativeFocus(), false, 'hiding arrows does not focus an inactive toolbar');
       assert.equal(await visible(activeBeforeClose), true);
@@ -331,6 +361,7 @@ for (const edition of ['personal', 'institutional']) {
       for (const id of remaining.slice(0, -1)) await dom((id) => window.browser.closeTab(id), id);
       await eventually(async () => (await state()).tabs.length, 1);
       await eventually(arrows, hiddenArrows, 'closing tabs until they fit removes both controls');
+      await assertAddAdjacent();
       assert.equal(await dom(() => document.querySelector('#tab-list').getBoundingClientRect().left), 0);
       await dom(() => document.querySelector('#tabs-next').focus());
       assert.equal(await dom(() => document.activeElement.id === 'tabs-next'), false, 'hidden arrows cannot receive focus');

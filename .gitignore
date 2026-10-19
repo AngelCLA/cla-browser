@@ -25,3 +25,6 @@ Thumbs.db
 .vscode/
 .idea/
 .commandcode
+
+# Electron test profiles and runtime artifacts
+/.toolbar-tabs-runtime/
