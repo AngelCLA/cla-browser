@@ -24,6 +24,12 @@ La barra de direcciones conserva las URL con `http://` o `https://`, completa lo
 
 Las pestañas inactivas se eliminan del arbol de vistas, por lo que solo se renderiza la pestaña activa. Se pueden reordenar sin recargar su contenido y reabrir hasta las ultimas 20 pestañas cerradas.
 
+Las flechas a los lados de la lista permiten ver las pestañas que no caben en la ventana. Al enfocar o seleccionar una pestaña, la lista la muestra sin cambiar la altura de la barra. Mantén el puntero sobre una pestaña para ver su título completo.
+
+Con el foco en una pestaña, `Izquierda` y `Derecha` recorren la lista de forma circular; `Inicio` y `Fin` llevan a los extremos. Estos movimientos solo cambian el foco: pulsa `Enter` o `Espacio` para activar la pestaña y `Suprimir` para cerrarla. También puedes enfocar su botón de cierre con `Tab`. Cerrar una pestaña inactiva no cambia la página seleccionada; cerrar la activa selecciona la anterior, o la primera si no hay anterior.
+
+La nueva pestaña personal conserva solo el logotipo. La edición institucional conserva su buscador central y las restricciones de la institución.
+
 ## Marcadores y bloqueo de contenido
 
 Una instalacion nueva incluye Google, Google Drive y Gmail como marcadores iniciales. Se pueden eliminar y no vuelven a crearse. Los marcadores se guardan en el perfil de Electron, normalmente en Windows en `%APPDATA%/cla-browser/bookmarks.json`; por ello no se sobrescriben al actualizar la aplicacion.

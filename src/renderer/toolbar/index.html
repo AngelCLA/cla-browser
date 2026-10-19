@@ -13,8 +13,11 @@
       #tabs { position: relative; display: flex; align-items: stretch; min-width: 0; padding-left: 74px; border-bottom: 1px solid #262626; -webkit-app-region: drag; }
       #brand { position: absolute; top: 0; left: 0; display: grid; width: 74px; height: 33px; place-items: center; border-right: 1px solid #262626; }
       #brand img { width: 47px; height: auto; opacity: .94; }
-      #tab-list { display: flex; min-width: 0; overflow: hidden; }
-      .tab { -webkit-app-region: no-drag; position: relative; display: flex; align-items: center; gap: 7px; width: 176px; max-width: 24vw; min-width: 96px; padding: 0 9px 0 11px; border: 0; border-right: 1px solid #262626; background: #000; color: #888; cursor: pointer; transition: background .14s ease, color .14s ease; }
+      #tab-list { display: flex; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; -webkit-app-region: no-drag; }
+      #tab-list::-webkit-scrollbar { display: none; }
+      .tab { -webkit-app-region: no-drag; position: relative; display: flex; flex: 0 0 176px; align-items: center; width: 176px; max-width: 24vw; min-width: 96px; padding-right: 5px; border-right: 1px solid #262626; background: #000; color: #888; transition: background .14s ease, color .14s ease; }
+      .tab-select { display: flex; flex: 1; align-items: center; align-self: stretch; gap: 7px; min-width: 0; padding: 0 5px 0 11px; border: 0; background: transparent; color: inherit; cursor: pointer; }
+      button:focus-visible { outline: 2px solid #fafafa; outline-offset: -3px; }
       .tab:hover { background: #111; color: #ddd; }
       .tab.active { background: #171717; color: #fafafa; }
       .tab.active::before { position: absolute; right: 0; bottom: -1px; left: 0; height: 1px; background: #fafafa; content: ""; }
@@ -30,10 +33,12 @@
        #ad-blocker.active { color: #8dd6a1; }
        #ad-blocker:not(.active) { color: #888; }
        #ad-blocker-count { position: absolute; right: 1px; bottom: 1px; min-width: 10px; color: inherit; font-size: 9px; font-variant-numeric: tabular-nums; line-height: 1; pointer-events: none; }
-      .close { width: 20px; height: 20px; opacity: 0; }
-      .tab:hover .close, .tab.active .close { opacity: 1; }
-      .new-tab { -webkit-app-region: no-drag; align-self: center; margin-left: 4px; }
-      #window-controls { display: flex; margin-left: auto; -webkit-app-region: no-drag; }
+      .close { flex: 0 0 20px; width: 20px; height: 20px; opacity: 0; }
+      .tab:hover .close, .tab.active .close, .tab:focus-within .close { opacity: 1; }
+      .new-tab, .tab-scroll { -webkit-app-region: no-drag; flex: 0 0 28px; align-self: center; }
+      .new-tab { margin-left: 4px; }
+      .tab-scroll:disabled { opacity: .3; cursor: default; }
+      #window-controls { display: flex; flex-shrink: 0; margin-left: auto; -webkit-app-region: no-drag; }
       .window-control { display: inline-grid; width: 46px; place-items: center; padding: 0; border: 0; background: transparent; color: #a3a3a3; cursor: pointer; transition: background .14s ease, color .14s ease; }
       .window-control:hover { background: #262626; color: #fff; }
       .window-control.close-window:hover { background: #e5484d; color: #fff; }
@@ -75,12 +80,14 @@
   <body>
     <div id="tabs">
       <div id="brand" aria-label="CLA"><img src="../../assets/cla-tech-logo.svg" alt="CLA" /></div>
-      <div id="tab-list"></div>
+      <button id="tabs-previous" class="icon-button tab-scroll" title="Ver pestañas anteriores" aria-label="Ver pestañas anteriores"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6" /></svg></button>
+      <div id="tab-list" role="tablist" aria-label="Pestañas"></div>
+      <button id="tabs-next" class="icon-button tab-scroll" title="Ver pestañas siguientes" aria-label="Ver pestañas siguientes"><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg></button>
       <button class="icon-button new-tab" title="Nueva pestaña" aria-label="Nueva pestaña"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg></button>
       <div id="window-controls">
         <button class="window-control" data-window-action="minimize" title="Minimizar" aria-label="Minimizar"><svg viewBox="0 0 24 24"><path d="M5 12h14" /></svg></button>
         <button class="window-control" data-window-action="toggle-maximize" title="Maximizar" aria-label="Maximizar"><svg id="maximize-icon" viewBox="0 0 24 24"><path d="M5 5h14v14H5z" /></svg></button>
-        <button class="window-control close-window" data-window-action="close" title="Cerrar" aria-label="Cerrar"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
+        <button class="window-control close-window" data-window-action="close" title="Cerrar ventana" aria-label="Cerrar ventana"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
       </div>
     </div>
     <div id="bar">
@@ -104,6 +111,10 @@
       const maximizeIcon = document.querySelector('#maximize-icon');
       let state = { tabs: [], activeTabId: null };
       let draggedTabId = null;
+      const tabNodes = new Map();
+      let rovingTabId = null;
+      const previousTabs = document.querySelector('#tabs-previous');
+      const nextTabs = document.querySelector('#tabs-next');
        let suggestionRequest = 0;
        let suggestionTimer;
        let suggestions = [];
@@ -111,43 +122,85 @@
 
       function icon(path) { return `<svg viewBox="0 0 24 24"><path d="${path}" /></svg>`; }
        function render(nextState) {
+         const previousState = state;
+         const focused = document.activeElement;
+         const focusedId = Number(focused.closest('[data-tab-id]')?.dataset.tabId);
+         const removedFocus = focusedId && !nextState.tabs.some((tab) => tab.id === focusedId);
          state = nextState;
          document.documentElement.style.setProperty('--address-accent', state.addressAccentColor || '#fafafa');
-         tabList.replaceChildren();
-        for (const tab of state.tabs) {
-          const element = document.createElement('button');
-          element.className = `tab ${tab.id === state.activeTabId ? 'active' : ''} ${tab.loading ? 'loading' : ''}`;
-          element.draggable = true;
-          element.innerHTML = `<span class="tab-status"></span><span class="tab-title">${escapeHtml(tab.loading ? 'Cargando' : tab.title)}</span><span class="icon-button close" title="Cerrar pestaña">${icon('m6 6 12 12M18 6 6 18')}</span>`;
-          element.addEventListener('click', () => window.browser.selectTab(tab.id));
-          element.querySelector('.close').addEventListener('click', (event) => { event.stopPropagation(); window.browser.closeTab(tab.id); });
-          element.addEventListener('dragstart', (event) => {
-            draggedTabId = tab.id;
-            element.classList.add('dragging');
-            event.dataTransfer.effectAllowed = 'move';
-            event.dataTransfer.setData('text/plain', String(tab.id));
-          });
-          element.addEventListener('dragend', () => {
-            draggedTabId = null;
-            tabList.querySelectorAll('.drag-before, .drag-after, .dragging').forEach((item) => item.classList.remove('drag-before', 'drag-after', 'dragging'));
-          });
-          element.addEventListener('dragover', (event) => {
-            if (draggedTabId === null || draggedTabId === tab.id) return;
-            event.preventDefault();
-            const placeAfter = event.clientX > element.getBoundingClientRect().left + element.clientWidth / 2;
-            tabList.querySelectorAll('.drag-before, .drag-after').forEach((item) => item.classList.remove('drag-before', 'drag-after'));
-            element.classList.add(placeAfter ? 'drag-after' : 'drag-before');
-            event.dataTransfer.dropEffect = 'move';
-          });
-          element.addEventListener('dragleave', () => element.classList.remove('drag-before', 'drag-after'));
-          element.addEventListener('drop', (event) => {
-            event.preventDefault();
-            if (draggedTabId === null || draggedTabId === tab.id) return;
-            const placeAfter = event.clientX > element.getBoundingClientRect().left + element.clientWidth / 2;
-            window.browser.moveTab(draggedTabId, tab.id, placeAfter);
-          });
-          tabList.append(element);
-        }
+         for (const [id, element] of tabNodes) {
+           if (!state.tabs.some((tab) => tab.id === id)) {
+             element.remove();
+             tabNodes.delete(id);
+           }
+         }
+         if (removedFocus) {
+           const index = previousState.tabs.findIndex((tab) => tab.id === focusedId);
+           rovingTabId = focusedId === previousState.activeTabId ? state.activeTabId : state.tabs[Math.min(index, state.tabs.length - 1)]?.id;
+         } else if (!tabNodes.has(rovingTabId) || (!focusedId && previousState.activeTabId !== state.activeTabId)) {
+           rovingTabId = state.activeTabId;
+         }
+         let position = 0;
+         for (const tab of state.tabs) {
+           let element = tabNodes.get(tab.id);
+           if (!element) {
+             element = document.createElement('div');
+             element.dataset.tabId = tab.id;
+             element.setAttribute('role', 'presentation');
+             element.draggable = true;
+             element.innerHTML = `<button type="button" class="tab-select" role="tab"><span class="tab-status" aria-hidden="true"></span><span class="tab-title"></span></button><button type="button" class="icon-button close">${icon('m6 6 12 12M18 6 6 18')}</button>`;
+             element.querySelector('.tab-select').addEventListener('click', () => window.browser.selectTab(tab.id));
+             element.querySelector('.close').addEventListener('click', () => window.browser.closeTab(tab.id, { focus: 'toolbar' }));
+             element.addEventListener('dragstart', (event) => {
+               draggedTabId = tab.id;
+               element.classList.add('dragging');
+               event.dataTransfer.effectAllowed = 'move';
+               event.dataTransfer.setData('text/plain', String(tab.id));
+             });
+             element.addEventListener('dragend', () => {
+               draggedTabId = null;
+               tabList.querySelectorAll('.drag-before, .drag-after, .dragging').forEach((item) => item.classList.remove('drag-before', 'drag-after', 'dragging'));
+             });
+             element.addEventListener('dragover', (event) => {
+               if (draggedTabId === null || draggedTabId === tab.id) return;
+               event.preventDefault();
+               const placeAfter = event.clientX > element.getBoundingClientRect().left + element.clientWidth / 2;
+               tabList.querySelectorAll('.drag-before, .drag-after').forEach((item) => item.classList.remove('drag-before', 'drag-after'));
+               element.classList.add(placeAfter ? 'drag-after' : 'drag-before');
+               event.dataTransfer.dropEffect = 'move';
+             });
+             element.addEventListener('dragleave', () => element.classList.remove('drag-before', 'drag-after'));
+             element.addEventListener('drop', (event) => {
+               event.preventDefault();
+               if (draggedTabId === null || draggedTabId === tab.id) return;
+               const placeAfter = event.clientX > element.getBoundingClientRect().left + element.clientWidth / 2;
+               window.browser.moveTab(draggedTabId, tab.id, placeAfter);
+             });
+             tabNodes.set(tab.id, element);
+           }
+           element.classList.toggle('active', tab.id === state.activeTabId);
+           element.classList.toggle('loading', Boolean(tab.loading));
+           element.classList.add('tab');
+           const select = element.querySelector('.tab-select');
+           select.setAttribute('aria-selected', String(tab.id === state.activeTabId));
+           select.tabIndex = tab.id === rovingTabId ? 0 : -1;
+           select.title = tab.title || 'Nueva pestaña';
+           select.setAttribute('aria-label', select.title);
+           element.querySelector('.tab-title').textContent = tab.loading ? 'Cargando' : select.title;
+           const close = element.querySelector('.close');
+           close.title = `Cerrar pestaña: ${select.title}`;
+           close.setAttribute('aria-label', close.title);
+           const current = tabList.children[position++];
+           if (current !== element) {
+             // Atomic moves preserve DOM focus and drag identity on reorder.
+             if (element.isConnected) tabList.moveBefore(element, current || null);
+             else tabList.insertBefore(element, current || null);
+           }
+         }
+         if (removedFocus) tabNodes.get(rovingTabId)?.querySelector('.tab-select').focus({ preventScroll: true });
+         if (previousState.activeTabId !== state.activeTabId) revealTab(state.activeTabId);
+         else if (focusedId && previousState.tabs.findIndex((tab) => tab.id === focusedId) !== state.tabs.findIndex((tab) => tab.id === focusedId)) revealTab(focusedId);
+         updateOverflow();
          const active = state.tabs.find((tab) => tab.id === state.activeTabId);
          if (active && (active.restricted || document.activeElement !== address)) address.value = active.restricted ? 'Sitio restringido' : active.url;
          address.disabled = Boolean(active?.restricted);
@@ -165,7 +218,44 @@
           document.body.classList.toggle('bookmarks-hidden', !state.bookmarksVisible);
          renderBookmarks();
        }
-        function escapeHtml(value) { const element = document.createElement('span'); element.textContent = value; return element.innerHTML; }
+       function revealTab(id) {
+         const element = tabNodes.get(id);
+         if (!element) return;
+         const bounds = element.getBoundingClientRect();
+         const viewport = tabList.getBoundingClientRect();
+         if (bounds.left < viewport.left) tabList.scrollLeft += bounds.left - viewport.left;
+         else if (bounds.right > viewport.right) tabList.scrollLeft += bounds.right - viewport.right;
+       }
+       function updateOverflow() {
+         previousTabs.disabled = tabList.scrollLeft <= 1;
+         nextTabs.disabled = tabList.scrollLeft + tabList.clientWidth >= tabList.scrollWidth - 1;
+       }
+       previousTabs.addEventListener('click', () => { tabList.scrollLeft -= Math.max(96, tabList.clientWidth * .8); });
+       nextTabs.addEventListener('click', () => { tabList.scrollLeft += Math.max(96, tabList.clientWidth * .8); });
+       tabList.addEventListener('scroll', updateOverflow);
+       new ResizeObserver(() => { revealTab(rovingTabId || state.activeTabId); updateOverflow(); }).observe(tabList);
+       tabList.addEventListener('focusin', (event) => {
+         const element = event.target.closest('[data-tab-id]');
+         if (!element) return;
+         rovingTabId = Number(element.dataset.tabId);
+         for (const [id, node] of tabNodes) node.querySelector('.tab-select').tabIndex = id === rovingTabId ? 0 : -1;
+         revealTab(rovingTabId);
+       });
+       tabList.addEventListener('keydown', (event) => {
+         if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.target.getAttribute('role') !== 'tab') return;
+         const id = Number(event.target.closest('[data-tab-id]').dataset.tabId);
+         const index = state.tabs.findIndex((tab) => tab.id === id);
+         let destination;
+         if (event.key === 'ArrowLeft') destination = (index - 1 + state.tabs.length) % state.tabs.length;
+         else if (event.key === 'ArrowRight') destination = (index + 1) % state.tabs.length;
+         else if (event.key === 'Home') destination = 0;
+         else if (event.key === 'End') destination = state.tabs.length - 1;
+         else if (event.key === 'Enter' || event.key === ' ') window.browser.selectTab(id, { focus: 'toolbar' });
+         else if (event.key === 'Delete') window.browser.closeTab(id, { focus: 'toolbar' });
+         else return;
+         event.preventDefault();
+         if (destination !== undefined) tabNodes.get(state.tabs[destination].id).querySelector('.tab-select').focus({ preventScroll: true });
+       });
          function fallbackFavicon(url) {
            try {
              const page = new URL(url);
@@ -318,7 +408,12 @@
        document.querySelectorAll('[data-window-action]').forEach((button) => button.addEventListener('click', () => window.browser.windowAction(button.dataset.windowAction)));
        newTab.addEventListener('click', () => window.browser.action('new-tab'));
        window.browser.onState(render);
-       window.browser.onWindowState(({ maximized }) => { maximizeIcon.innerHTML = maximized ? '<path d="M8 5h11v11M5 8h11v11H5z" />' : '<path d="M5 5h14v14H5z" />'; });
+        window.browser.onWindowState(({ maximized }) => {
+          maximizeIcon.innerHTML = maximized ? '<path d="M8 5h11v11M5 8h11v11H5z" />' : '<path d="M5 5h14v14H5z" />';
+          const button = maximizeIcon.closest('button');
+          button.title = maximized ? 'Restaurar ventana' : 'Maximizar';
+          button.setAttribute('aria-label', button.title);
+        });
        window.browser.getState().then(render);
     </script>
   </body>

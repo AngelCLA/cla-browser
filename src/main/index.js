@@ -499,7 +499,7 @@ function layoutViewsAfterResize() {
   setImmediate(layoutViews);
 }
 
-function showTab(id) {
+function showTab(id, keepToolbarFocus = false) {
   const nextTab = tabs.find((tab) => tab.id === id);
   if (!nextTab) return;
 
@@ -513,7 +513,8 @@ function showTab(id) {
     window.contentView.addChildView(nextTab.view);
   }
   layoutViews();
-  nextTab.view.webContents.focus();
+  if (keepToolbarFocus) toolbarView.webContents.focus();
+  else nextTab.view.webContents.focus();
   notifyToolbar();
 }
 
@@ -595,7 +596,7 @@ function createTab(address = BLANK_PAGE_URL, makeActive = true) {
   return tab;
 }
 
-function closeTab(id = activeTabId) {
+function closeTab(id = activeTabId, keepToolbarFocus = false) {
   const index = tabs.findIndex((tab) => tab.id === id);
   if (index === -1) return;
 
@@ -611,7 +612,7 @@ function closeTab(id = activeTabId) {
     window.close();
     return;
   }
-  if (id === activeTabId) showTab(tabs[Math.max(0, index - 1)].id);
+  if (id === activeTabId) showTab(tabs[Math.max(0, index - 1)].id, keepToolbarFocus);
   else notifyToolbar();
 }
 
@@ -832,8 +833,14 @@ ipcMain.on('browser:action', (_event, action) => {
   if (action === 'toggle-site-exception') toggleActiveSiteException();
   if (action === 'toggle-ad-blocker-mode') setAdBlockerMode(adBlockerSettings.mode === 'lightweight' ? 'reinforced' : 'lightweight');
 });
-ipcMain.on('browser:select-tab', (_event, id) => showTab(id));
-ipcMain.on('browser:close-tab', (_event, id) => closeTab(id));
+ipcMain.on('browser:select-tab', (event, id, options) => {
+  if (!Number.isSafeInteger(id)) return;
+  showTab(id, event.sender === toolbarView?.webContents && options?.focus === 'toolbar');
+});
+ipcMain.on('browser:close-tab', (event, id, options) => {
+  if (!Number.isSafeInteger(id)) return;
+  closeTab(id, event.sender === toolbarView?.webContents && options?.focus === 'toolbar');
+});
 ipcMain.on('browser:set-suggestion-height', (event, height) => {
   if (event.sender !== toolbarView?.webContents || !Number.isFinite(height)) return;
   toolbarSuggestionHeight = Math.max(0, Math.min(280, Math.round(height)));
