@@ -75,6 +75,12 @@ for (const edition of ['personal', 'institutional']) {
         const viewport = document.querySelector('#tab-list').getBoundingClientRect();
         return bounds.left >= viewport.left - 1 && bounds.right <= viewport.right + 1;
       }, id);
+      const arrows = () => dom(() => [...document.querySelectorAll('.tab-scroll')].map((button) => ({
+        hidden: button.hidden, display: getComputedStyle(button).display, width: button.getBoundingClientRect().width,
+      })));
+      const hiddenArrows = Array.from({ length: 2 }, () => ({ hidden: true, display: 'none', width: 0 }));
+      const shownArrows = Array.from({ length: 2 }, () => ({ hidden: false, display: 'grid', width: 28 }));
+      const resize = (width) => electron.evaluate(({ BaseWindow }, width) => BaseWindow.getAllWindows()[0].setContentSize(width, 600), width);
       await eventually(async () => (await state()).tabs.length, 1);
       await eventually(async () => (await state()).tabs[0].loading, false);
       const newTab = await electron.evaluate(async ({ webContents }) => {
@@ -83,6 +89,29 @@ for (const edition of ['personal', 'institutional']) {
       });
       assert.equal(newTab.search, edition === 'personal' ? 'none' : 'block');
       assert.equal(newTab.logo, edition === 'personal' ? 'CLA Browser' : 'Institucion');
+      assert.deepEqual(await arrows(), hiddenArrows, 'a single tab reserves no arrow space');
+      assert.deepEqual(await dom(() => {
+        const tabs = document.querySelector('#tabs');
+        const list = document.querySelector('#tab-list');
+        const previous = document.querySelector('#tabs-previous').getBoundingClientRect();
+        const first = list.firstElementChild.getBoundingClientRect();
+        const emptyX = list.getBoundingClientRect().right - 2;
+        return {
+          brand: Boolean(tabs.querySelector('#brand, img')),
+          paddingLeft: getComputedStyle(tabs).paddingLeft,
+          previousLeft: previous.left,
+          previousWidth: previous.width,
+          listLeft: list.getBoundingClientRect().left,
+          firstLeft: first.left,
+          emptyHit: document.elementFromPoint(emptyX, 16)?.id,
+          regions: ['#tabs', '#tab-list', '.tab', '.tab-scroll', '.new-tab', '#window-controls']
+            .map((selector) => getComputedStyle(document.querySelector(selector)).getPropertyValue('-webkit-app-region')),
+        };
+      }), {
+        brand: false, paddingLeft: '0px', previousLeft: 0, previousWidth: 0,
+        listLeft: 0, firstLeft: 0, emptyHit: 'tab-list',
+        regions: ['drag', 'drag', 'no-drag', 'no-drag', 'no-drag', 'no-drag'],
+      }, 'fitting tabs start at the left edge; unused strip is draggable');
       assert.equal(await dom(() => document.querySelector('#tab-list').getAttribute('role')), 'tablist');
       assert.equal(await dom(() => document.querySelector('#tab-list').getAttribute('aria-label')), 'Pestañas');
 
@@ -90,10 +119,13 @@ for (const edition of ['personal', 'institutional']) {
       for (let i = 0; i < 9; i += 1) {
         await dom(() => window.browser.action('new-tab'));
         await eventually(async () => (await state()).tabs.length, i + 2);
+        if (i === 0) assert.deepEqual(await arrows(), hiddenArrows, 'two tabs fit at narrow width');
       }
       await eventually(async () => (await state()).tabs.every((tab) => !tab.loading), true);
       const ids = (await state()).tabs.map((tab) => tab.id);
       const activeId = ids.at(-1);
+      await eventually(arrows, shownArrows, 'overflow shows both controls');
+      assert.equal(await visible(activeId), true, 'overflow keeps the selected tab reachable');
       const dimensions = await dom(() => {
         const list = document.querySelector('#tab-list');
         const controls = document.querySelector('#window-controls').getBoundingClientRect();
@@ -104,10 +136,19 @@ for (const edition of ['personal', 'institutional']) {
       for (const [control, edge] of [['#tabs-previous', ids[0]], ['#tabs-next', activeId]]) {
         for (let attempt = 0; attempt < 20 && !await visible(edge); attempt += 1) {
           const before = await dom(() => document.querySelector('#tab-list').scrollLeft);
+          assert.deepEqual(await dom((control) => {
+            const button = document.querySelector(control);
+            const bounds = button.getBoundingClientRect();
+            const hit = document.elementFromPoint(Math.round(bounds.x + bounds.width / 2), Math.round(bounds.y + bounds.height / 2));
+            return { disabled: button.disabled, hit: hit.closest('button')?.id, region: getComputedStyle(button).getPropertyValue('-webkit-app-region') };
+          }, control), { disabled: false, hit: control.slice(1), region: 'no-drag' }, `${control} is enabled and hit-testable`);
           await click(control);
-          await eventually(() => dom((before) => document.querySelector('#tab-list').scrollLeft !== before, before), true);
+          await eventually(() => dom((before) => document.querySelector('#tab-list').scrollLeft !== before, before), true, `${control} pointer click changes overflow position from ${before}`);
         }
         assert.equal(await visible(edge), true, `${control} reaches the end of the strip`);
+        await eventually(() => dom((control) => document.querySelector(control).disabled, control), true, 'only the reached direction is disabled');
+        assert.equal(await dom((control) => document.querySelector(control === '#tabs-previous' ? '#tabs-next' : '#tabs-previous').disabled, control), false);
+        assert.deepEqual(await arrows(), shownArrows, 'both arrows remain visible at either edge');
       }
       assert.equal(await dom(() => [...document.querySelectorAll('#tabs > button, #window-controls button, #bar button')].every((button) => button.title && button.getAttribute('aria-label'))), true);
 
@@ -224,6 +265,62 @@ for (const edition of ['personal', 'institutional']) {
       await eventually(async () => (await state()).tabs.length, 6);
       assert.equal((await state()).activeTabId, activeBeforeClose);
       assert.equal(await nativeFocus(), false, 'background close does not steal native content focus');
+      // Tabs have a viewport-relative max-width; measure after widening, not at 500px.
+      await resize(1400);
+      await eventually(arrows, hiddenArrows, 'a wide window fits the remaining tabs');
+      // Measure the fit boundary without assuming a tab count or a control width.
+      const fittingWidth = await dom(() => {
+        const list = document.querySelector('#tab-list');
+        const content = [...list.children].reduce((width, tab) => width + tab.getBoundingClientRect().width, 0);
+        const arrows = [...document.querySelectorAll('.tab-scroll')].reduce((width, button) => width + button.getBoundingClientRect().width, 0);
+        return Math.ceil(content + innerWidth - list.getBoundingClientRect().width - arrows) + 1;
+      });
+      await resize(500);
+      await eventually(arrows, shownArrows);
+      // A stale DOM focus in the toolbar must not steal native focus from content.
+      await dom(() => document.querySelector('#tabs-previous').focus());
+      assert.equal(await nativeFocus(), false);
+      await resize(fittingWidth);
+      await eventually(arrows, hiddenArrows, 'widening reclaims both arrow slots at the fit threshold');
+      assert.deepEqual(await dom(() => {
+        const list = document.querySelector('#tab-list');
+        const content = [...list.children].reduce((width, tab) => width + tab.getBoundingClientRect().width, 0);
+        const slots = [...document.querySelectorAll('.tab-scroll')].reduce((width, button) => width + parseFloat(getComputedStyle(button).flexBasis), 0);
+        return { fitsWithoutArrows: content <= list.clientWidth, wouldOverflowWithArrows: content > list.clientWidth - slots };
+      }), { fitsWithoutArrows: true, wouldOverflowWithArrows: true }, 'arrow slots would create phantom overflow at this width');
+      assert.equal(await nativeFocus(), false, 'hiding arrows does not focus an inactive toolbar');
+      assert.equal(await visible(activeBeforeClose), true);
+      assert.deepEqual(await dom(async () => {
+        const samples = [];
+        for (let frame = 0; frame < 4; frame += 1) {
+          await new Promise(requestAnimationFrame);
+          samples.push([...document.querySelectorAll('.tab-scroll')].every((button) => button.hidden && button.offsetWidth === 0));
+        }
+        return samples;
+      }), [true, true, true, true], 'the threshold does not oscillate across rendering frames');
+      await electron.evaluate(async ({ webContents }) => {
+        const page = webContents.getAllWebContents().find((wc) => wc.getURL().includes('/new-tab/index.html'));
+        await page.executeJavaScript('document.title = "Threshold state update"');
+      });
+      await eventually(async () => (await state()).tabs.some((tab) => tab.title === 'Threshold state update'), true);
+      assert.deepEqual(await arrows(), hiddenArrows, 'unrelated state updates cannot create phantom overflow');
+      await resize(fittingWidth - 2);
+      await eventually(arrows, shownArrows, 'one pixel of real overflow shows both controls');
+      await resize(500);
+      await eventually(() => dom(() => innerWidth), 500);
+      await focus(activeBeforeClose);
+      await dom(() => document.querySelector('#tabs-previous').focus());
+      assert.equal(await nativeFocus(), true);
+      await resize(fittingWidth);
+      await eventually(arrows, hiddenArrows);
+      await eventually(focusedId, activeBeforeClose, 'hiding a focused arrow restores the selected tab focus');
+      assert.equal(await nativeFocus(), true);
+      await focus(activeId);
+      await resize(500);
+      await eventually(arrows, shownArrows, 'shrinking restores overflow controls');
+      await eventually(() => visible(activeId), true, 'shrinking reveals the focused background tab');
+      assert.equal(await focusedId(), activeId);
+      assert.equal((await state()).activeTabId, activeBeforeClose, 'resize does not activate the focused background tab');
       await electron.evaluate(({ ipcMain, webContents }, id) => {
         const page = webContents.getAllWebContents().find((wc) => wc.getURL().includes('/new-tab/index.html'));
         ipcMain.emit('browser:select-tab', { sender: page }, id, { focus: 'toolbar' });
@@ -233,6 +330,10 @@ for (const edition of ['personal', 'institutional']) {
       const remaining = (await state()).tabs.map((tab) => tab.id);
       for (const id of remaining.slice(0, -1)) await dom((id) => window.browser.closeTab(id), id);
       await eventually(async () => (await state()).tabs.length, 1);
+      await eventually(arrows, hiddenArrows, 'closing tabs until they fit removes both controls');
+      assert.equal(await dom(() => document.querySelector('#tab-list').getBoundingClientRect().left), 0);
+      await dom(() => document.querySelector('#tabs-next').focus());
+      assert.equal(await dom(() => document.activeElement.id === 'tabs-next'), false, 'hidden arrows cannot receive focus');
       const exited = electron.waitForEvent('close');
       await dom((id) => window.browser.closeTab(id), remaining.at(-1));
       await exited;

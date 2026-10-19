@@ -24,7 +24,7 @@ La barra de direcciones conserva las URL con `http://` o `https://`, completa lo
 
 Las pestañas inactivas se eliminan del arbol de vistas, por lo que solo se renderiza la pestaña activa. Se pueden reordenar sin recargar su contenido y reabrir hasta las ultimas 20 pestañas cerradas.
 
-Las flechas a los lados de la lista permiten ver las pestañas que no caben en la ventana. Al enfocar o seleccionar una pestaña, la lista la muestra sin cambiar la altura de la barra. Mantén el puntero sobre una pestaña para ver su título completo.
+Las flechas a los lados de la lista aparecen solo cuando las pestañas no caben en la ventana y permiten recorrerlas. Al enfocar o seleccionar una pestaña, la lista la muestra sin cambiar la altura de la barra. Mantén el puntero sobre una pestaña para ver su título completo.
 
 Con el foco en una pestaña, `Izquierda` y `Derecha` recorren la lista de forma circular; `Inicio` y `Fin` llevan a los extremos. Estos movimientos solo cambian el foco: pulsa `Enter` o `Espacio` para activar la pestaña y `Suprimir` para cerrarla. También puedes enfocar su botón de cierre con `Tab`. Cerrar una pestaña inactiva no cambia la página seleccionada; cerrar la activa selecciona la anterior, o la primera si no hay anterior.
 

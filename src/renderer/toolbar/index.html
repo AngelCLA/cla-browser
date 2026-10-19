@@ -10,10 +10,8 @@
       body { margin: 0; height: 100vh; display: grid; grid-template-rows: 34px 42px auto auto; align-content: start; overflow: hidden; background: #000; user-select: none; }
       button { font: inherit; }
       svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
-      #tabs { position: relative; display: flex; align-items: stretch; min-width: 0; padding-left: 74px; border-bottom: 1px solid #262626; -webkit-app-region: drag; }
-      #brand { position: absolute; top: 0; left: 0; display: grid; width: 74px; height: 33px; place-items: center; border-right: 1px solid #262626; }
-      #brand img { width: 47px; height: auto; opacity: .94; }
-      #tab-list { display: flex; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; -webkit-app-region: no-drag; }
+      #tabs { position: relative; display: flex; align-items: stretch; min-width: 0; border-bottom: 1px solid #262626; -webkit-app-region: drag; }
+      #tab-list { display: flex; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; -webkit-app-region: drag; }
       #tab-list::-webkit-scrollbar { display: none; }
       .tab { -webkit-app-region: no-drag; position: relative; display: flex; flex: 0 0 176px; align-items: center; width: 176px; max-width: 24vw; min-width: 96px; padding-right: 5px; border-right: 1px solid #262626; background: #000; color: #888; transition: background .14s ease, color .14s ease; }
       .tab-select { display: flex; flex: 1; align-items: center; align-self: stretch; gap: 7px; min-width: 0; padding: 0 5px 0 11px; border: 0; background: transparent; color: inherit; cursor: pointer; }
@@ -38,6 +36,7 @@
       .new-tab, .tab-scroll { -webkit-app-region: no-drag; flex: 0 0 28px; align-self: center; }
       .new-tab { margin-left: 4px; }
       .tab-scroll:disabled { opacity: .3; cursor: default; }
+      .tab-scroll[hidden] { display: none; }
       #window-controls { display: flex; flex-shrink: 0; margin-left: auto; -webkit-app-region: no-drag; }
       .window-control { display: inline-grid; width: 46px; place-items: center; padding: 0; border: 0; background: transparent; color: #a3a3a3; cursor: pointer; transition: background .14s ease, color .14s ease; }
       .window-control:hover { background: #262626; color: #fff; }
@@ -79,10 +78,9 @@
   </head>
   <body>
     <div id="tabs">
-      <div id="brand" aria-label="CLA"><img src="../../assets/cla-tech-logo.svg" alt="CLA" /></div>
-      <button id="tabs-previous" class="icon-button tab-scroll" title="Ver pestañas anteriores" aria-label="Ver pestañas anteriores"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6" /></svg></button>
+      <button id="tabs-previous" class="icon-button tab-scroll" title="Ver pestañas anteriores" aria-label="Ver pestañas anteriores" hidden><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6" /></svg></button>
       <div id="tab-list" role="tablist" aria-label="Pestañas"></div>
-      <button id="tabs-next" class="icon-button tab-scroll" title="Ver pestañas siguientes" aria-label="Ver pestañas siguientes"><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg></button>
+      <button id="tabs-next" class="icon-button tab-scroll" title="Ver pestañas siguientes" aria-label="Ver pestañas siguientes" hidden><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></svg></button>
       <button class="icon-button new-tab" title="Nueva pestaña" aria-label="Nueva pestaña"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg></button>
       <div id="window-controls">
         <button class="window-control" data-window-action="minimize" title="Minimizar" aria-label="Minimizar"><svg viewBox="0 0 24 24"><path d="M5 12h14" /></svg></button>
@@ -115,6 +113,7 @@
       let rovingTabId = null;
       const previousTabs = document.querySelector('#tabs-previous');
       const nextTabs = document.querySelector('#tabs-next');
+      let lastTabListWidth = 0;
        let suggestionRequest = 0;
        let suggestionTimer;
        let suggestions = [];
@@ -227,13 +226,29 @@
          else if (bounds.right > viewport.right) tabList.scrollLeft += bounds.right - viewport.right;
        }
        function updateOverflow() {
+         // Count the slots occupied by visible arrows back into the available width.
+         // Summing tab widths avoids scrollWidth's viewport floor when all tabs fit.
+         const available = tabList.getBoundingClientRect().width + previousTabs.getBoundingClientRect().width + nextTabs.getBoundingClientRect().width;
+         const content = [...tabList.children].reduce((width, tab) => width + tab.getBoundingClientRect().width, 0);
+         const overflow = content > available;
+         if (previousTabs.hidden === overflow) {
+           const restoreFocus = !overflow && document.hasFocus() && [previousTabs, nextTabs].includes(document.activeElement);
+           previousTabs.hidden = nextTabs.hidden = !overflow;
+           if (restoreFocus) tabNodes.get(rovingTabId || state.activeTabId)?.querySelector('.tab-select').focus({ preventScroll: true });
+         }
+         const width = tabList.clientWidth;
+         if (width !== lastTabListWidth) {
+           lastTabListWidth = width;
+           const focusedId = document.hasFocus() && Number(document.activeElement.closest('[data-tab-id]')?.dataset.tabId);
+           revealTab(focusedId || state.activeTabId);
+         }
          previousTabs.disabled = tabList.scrollLeft <= 1;
          nextTabs.disabled = tabList.scrollLeft + tabList.clientWidth >= tabList.scrollWidth - 1;
        }
        previousTabs.addEventListener('click', () => { tabList.scrollLeft -= Math.max(96, tabList.clientWidth * .8); });
        nextTabs.addEventListener('click', () => { tabList.scrollLeft += Math.max(96, tabList.clientWidth * .8); });
        tabList.addEventListener('scroll', updateOverflow);
-       new ResizeObserver(() => { revealTab(rovingTabId || state.activeTabId); updateOverflow(); }).observe(tabList);
+       new ResizeObserver(updateOverflow).observe(tabList);
        tabList.addEventListener('focusin', (event) => {
          const element = event.target.closest('[data-tab-id]');
          if (!element) return;
