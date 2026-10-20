@@ -59,22 +59,22 @@ The new-tab page needs a compact way to open saved bookmarks, discover browser k
   - Commit evidence: `7ddae21` (`feat(bookmarks): append new favorites`).
   - Review outcome: RDD on; assessment from `a25c69e2f28bb2efa673d7d2861c26863271bfdd` returned medium risk, `review_due: false`, reason `under_budget` (379 changed lines).
   - Route: delegated direct. Trigger: bookmark insertion, UI copy, and bounded-list behavior span main-process code, renderer, and integration coverage.
-- [ ] NT-5 — Replace the keyboard dropdown with dedicated local tabs for all bookmarks and keyboard shortcuts.
+- [x] NT-5 — Replace the keyboard dropdown with dedicated local tabs for all bookmarks and keyboard shortcuts.
   - Acceptance: the launcher panel provides “Ver todos los marcadores” and “Atajos de teclado”; each opens a separate browser tab using the shared local-page/createTab pattern, styled consistently with Restricted; the bookmark page shows all entries in bookmarks-bar order and opening one navigates that same tab; the keyboard page contains the implemented shortcut reference; both editions work, local-page data/navigation bridges are sender-scoped, and institutional favicon icons remain square.
   - Checks: add Electron integration coverage for both actions in both editions, full bookmark ordering and same-tab navigation, shortcut-reference parity, scoped IPC, institutional favicon sizing, and parallel test focus; run `node --test test/toolbar-tabs.test.js` and parallel `npm test`.
   - Verification: RED observed in both editions because the launcher lacked “Ver todos los marcadores”; the institutional favicon probe also observed 280px/absolute styling instead of 24px/static. After fixes, writer reports `node --test test/toolbar-tabs.test.js` and parallel `npm test` passed (2 and 42 tests respectively); parent repeated the focused test successfully (2 tests), and `git diff --check` passed. An earlier parallel run failed once at `test/toolbar-tabs.test.js:495`; a bounded native-focus wait now allows restoration without changing test concurrency.
   - Implementation evidence: panel actions open separate local tabs; bookmarks and keyboard pages follow the Restricted dark-page pattern; bookmark data/navigation handlers require the active WebContents, exact local page URL, and normalized saved bookmark URL; institutional image rules target `.brand-logo`, leaving favicons 24px and static.
   - Commit evidence: `ef17285` (`feat(new-tab): add dedicated bookmarks and shortcut views`).
-  - Review outcome: the pre-commit assessment was unassessable because the two new renderer pages were untracked; committed-candidate assessment from the feature base returned medium risk with `review_due: true` (`slice_budget_reached`).
+  - Review outcome: RDD approved; committed base-diff assessment returned medium risk with `review_due: true` (`slice_budget_reached`); the consolidated reliability review found no candidate-caused defects. Acknowledged under lineage `review-6c79b8ebba433ef7`.
   - Route: delegated direct. Trigger: multiple new local views, IPC/preload access, launcher changes, and cross-edition integration tests.
 - [x] NT-6 — Show each saved bookmark's favicon on the full bookmarks page.
   - Acceptance: every row of the bookmarks page renders an icon resolved from the saved URL (Gmail's icon, otherwise the origin favicon), with a generic fallback when the origin is not HTTP(S) or the image fails; names and URLs keep their order and accessible labels; both editions work.
   - Checks: extend the Electron integration assertions first and observe RED; run `node --test test/toolbar-tabs.test.js` and `npm test`.
   - Verification: RED observed in both editions because the page had no title class and no icons. After implementation, `node --test test/toolbar-tabs.test.js` passed (2 tests) and `npm test` passed (42 tests); `git diff --check` passed.
   - Implementation evidence: shared `fallbackFavicon` rule (Gmail special case, otherwise `new URL('/favicon.ico', page)`), 20px icon column with a generic circular fallback, and `data-favicon-src` retained per row for deterministic coverage.
-  - Commit evidence: pending work-unit commit.
-  - Review outcome: pending committed assessment.
-  - Route: delegated direct. Trigger: renderer layout change plus cross-edition integration assertions.
+  - Commit evidence: `0f3c9cd` (`feat(bookmarks): show saved bookmark icons`).
+  - Review outcome: included in the approved medium-risk base-diff review; reliability lens found no candidate-caused defects. Acknowledged under lineage `review-6c79b8ebba433ef7`.
+  - Route: direct inline. Trigger: one renderer page and a focused integration assertion.
 
 ## Next step
-Record the NT-6 committed assessment and close the feature task.
+Feature implementation and verification complete; all tasks NT-1 through NT-6 are closed.
