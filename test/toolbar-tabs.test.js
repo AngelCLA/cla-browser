@@ -27,6 +27,8 @@ for (const edition of ['personal', 'institutional']) {
       url: `https://example.test/shortcut-${index + 1}`,
     }));
     await fs.writeFile(path.join(profile, 'bookmarks.json'), JSON.stringify(bookmarks));
+    const visit = { title: `${edition} history visit`, url: `https://example.test/${edition}-history`, visitedAt: Date.now() };
+    await fs.writeFile(path.join(profile, 'history.json'), JSON.stringify([visit]));
     // Keep Playwright artifacts and Electron temporary data inside the approved output.
     const previousTemp = { TEMP: process.env.TEMP, TMP: process.env.TMP };
     process.env.TEMP = profile;
@@ -124,7 +126,24 @@ for (const edition of ['personal', 'institutional']) {
       })()`), newTab.webContentsId);
       assert.match(launcherActions, /Ver todos los marcadores/);
       assert.match(launcherActions, /Atajos de teclado/);
+      assert.match(launcherActions, /Historial/);
       const baselineTabCount = (await state()).tabs.length;
+      await electron.evaluate(({ webContents }, id) => webContents.fromId(id).executeJavaScript(`document.querySelector('[data-local-page="history"]').click()`), newTab.webContentsId);
+      await eventually(async () => (await state()).tabs.some((tab) => tab.url.includes('/history/index.html')), true, 'history action opens a dedicated tab');
+      const historyTab = (await state()).tabs.find((tab) => tab.url.includes('/history/index.html'));
+      const historyPage = await electron.evaluate(({ webContents }) => {
+        const page = webContents.getAllWebContents().find((wc) => wc.getURL().endsWith('/history/index.html'));
+        return page.executeJavaScript(`(async () => ({ bridge: typeof window.claBrowserHistory?.getEntries, entries: await window.claBrowserHistory.getEntries() }))()`);
+      });
+      assert.equal(historyPage.bridge, 'function');
+      assert.ok(historyPage.entries.some(({ url }) => url === visit.url), 'history is loaded in both editions');
+      assert.equal(await electron.evaluate(({ webContents }, id) => webContents.fromId(id).executeJavaScript('window.claBrowserHistory ? window.claBrowserHistory.getEntries() : Promise.resolve([])'), newTab.webContentsId).then((entries) => entries.length), 0, 'unrelated renderers cannot read history');
+      await dom((id) => window.browser.closeTab(id), historyTab.id);
+      await eventually(async () => (await state()).tabs.length, baselineTabCount);
+      await electron.evaluate(({ webContents }, id) => webContents.fromId(id).executeJavaScript(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'h', ctrlKey: true, bubbles: true, cancelable: true }))`), newTab.webContentsId);
+      await eventually(async () => (await state()).tabs.some((tab) => tab.url.includes('/history/index.html')), true, 'show-history action works in both editions');
+      await dom((id) => window.browser.closeTab(id), (await state()).tabs.find((tab) => tab.url.includes('/history/index.html')).id);
+      await eventually(async () => (await state()).tabs.length, baselineTabCount);
       await electron.evaluate(({ webContents }, id) => webContents.fromId(id).executeJavaScript(`document.querySelector('[data-local-page="bookmarks"]').click()`), newTab.webContentsId);
       await eventually(async () => (await state()).tabs.length, baselineTabCount + 1, 'bookmark action opens a dedicated tab');
       await eventually(async () => (await state()).tabs.some((tab) => tab.url.includes('/bookmarks/index.html')), true, 'bookmark tab completes local navigation');
@@ -237,7 +256,7 @@ for (const edition of ['personal', 'institutional']) {
       assert.equal(shortcutsPage.panelLabel, 'Atajos del navegador');
       assert.equal(shortcutsPage.heading, 'Atajos');
       assert.equal(shortcutsPage.inlineDisclosureAbsent, true);
-      assert.deepEqual(shortcutsPage.actions, ['Ver todos los marcadores', 'Atajos de teclado']);
+      assert.deepEqual(shortcutsPage.actions, ['Ver todos los marcadores', 'Historial', 'Atajos de teclado']);
       assert.deepEqual(shortcutsPage.bookmarkEntries, bookmarks.slice(0, 9).map(({ title }) => title), 'bookmarks remain in bar order and are capped at nine');
        assert.equal(shortcutsPage.staysOpenAfterShortcut, true, 'activating a shortcut keeps the panel open');
        assert.equal(shortcutsPage.focusedOutside, true);
@@ -544,7 +563,15 @@ for (const edition of ['personal', 'institutional']) {
        await eventually(async () => (await state()).tabs[0].url, addedBookmarkUrl);
        await dom(() => window.browser.action('toggle-bookmark'));
        await eventually(async () => (await state()).bookmarks.length, bookmarkCount + 1);
-        assert.deepEqual((await state()).bookmarks.map(({ url }) => url), [
+       await eventually(async () => {
+         try {
+           const savedHistory = JSON.parse(await fs.readFile(path.join(profile, 'history.json'), 'utf8'));
+           return savedHistory.some(({ url }) => url === addedBookmarkUrl);
+         } catch {
+           return false;
+         }
+       }, true, 'visited pages persist in history in both editions');
+       assert.deepEqual((await state()).bookmarks.map(({ url }) => url), [
           ...bookmarks.map(({ url }) => url), addedBookmarkUrl,
         ], 'a new bookmark appends without changing the existing bookmark order');
         const initialBookmarkOrder = (await state()).bookmarks.map(({ url }) => url);

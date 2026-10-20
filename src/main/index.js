@@ -377,19 +377,17 @@ function toggleActiveSiteException() {
   getActiveTab()?.view.webContents.reload();
 }
 
-function loadInstitutionalHistory() {
-  if (edition !== 'institutional') return;
+function loadHistory() {
   try {
     historyEntries.push(...normalizeHistory(JSON.parse(fs.readFileSync(historyPath(), 'utf8'))));
   } catch {}
   for (const entry of historyEntries.slice(0, 100)) {
     if (!recentPages.some((page) => page.url === entry.url)) recentPages.push({ url: entry.url, title: entry.title });
   }
-  saveInstitutionalHistory();
+  saveHistory();
 }
 
-function saveInstitutionalHistory() {
-  if (edition !== 'institutional') return;
+function saveHistory() {
   try {
     const normalized = normalizeHistory(historyEntries);
     historyEntries.splice(0, historyEntries.length, ...normalized);
@@ -403,10 +401,8 @@ function recordVisitedPage(url, title) {
   if (existing !== -1) recentPages.splice(existing, 1);
   recentPages.unshift({ url, title: title || url });
   if (recentPages.length > 100) recentPages.pop();
-  if (edition === 'institutional') {
-    historyEntries.unshift({ url, title: title || url, visitedAt: Date.now() });
-    saveInstitutionalHistory();
-  }
+  historyEntries.unshift({ url, title: title || url, visitedAt: Date.now() });
+  saveHistory();
 }
 
 async function getSuggestions(query) {
@@ -684,8 +680,8 @@ function reopenClosedTab() {
   if (tab) createTab(tab.url);
 }
 
-function showInstitutionalHistory() {
-  if (edition === 'institutional') createTab(HISTORY_PAGE_URL);
+function showHistory() {
+  createTab(HISTORY_PAGE_URL);
 }
 
 function moveTab(id, targetId, placeAfter) {
@@ -830,7 +826,7 @@ ipcMain.handle('browser:suggest', async (event, query) => {
   return getSuggestions(query);
 });
 ipcMain.handle('browser:get-history', (event) => {
-  if (edition !== 'institutional' || !event.sender.getURL().startsWith(HISTORY_PAGE_URL)) return [];
+  if (!tabs.some((tab) => tab.view.webContents === event.sender) || getActiveTab()?.view.webContents !== event.sender || event.sender.getURL() !== HISTORY_PAGE_URL) return [];
   return historyEntries;
 });
 ipcMain.handle('browser:get-shortcuts', (event) => {
@@ -860,7 +856,7 @@ ipcMain.handle('browser:open-local-bookmark', (event, url) => {
 });
 ipcMain.handle('browser:open-local-page', (event, page) => {
   if (!tabs.some((tab) => tab.view.webContents === event.sender) || getActiveTab()?.view.webContents !== event.sender || event.sender.getURL() !== BLANK_PAGE_URL) return false;
-  const url = page === 'bookmarks' ? BOOKMARKS_PAGE_URL : page === 'keyboard-shortcuts' ? KEYBOARD_SHORTCUTS_PAGE_URL : null;
+  const url = page === 'bookmarks' ? BOOKMARKS_PAGE_URL : page === 'keyboard-shortcuts' ? KEYBOARD_SHORTCUTS_PAGE_URL : page === 'history' ? HISTORY_PAGE_URL : null;
   if (!url) return false;
   createTab(url);
   return true;
@@ -870,7 +866,7 @@ ipcMain.on('browser:navigate', (event, address) => {
   navigate(typeof address === 'string' ? address : '');
 });
 ipcMain.on('browser:show-history', (event) => {
-  if (event.sender === getActiveTab()?.view.webContents) showInstitutionalHistory();
+  if (event.sender === getActiveTab()?.view.webContents) showHistory();
 });
 ipcMain.on('browser:go-back', (event) => {
   if (event.sender === getActiveTab()?.view.webContents) goBack();
@@ -887,7 +883,7 @@ ipcMain.on('browser:action', (_event, action) => {
   if (action === 'focus-address') focusAddress();
   if (action === 'devtools') toggleDevTools();
   if (action === 'toggle-bookmark') toggleActiveBookmark();
-  if (action === 'show-history') showInstitutionalHistory();
+  if (action === 'show-history') showHistory();
   if (action === 'toggle-ad-blocker') setAdBlockerEnabled(!adBlockerSettings.enabled);
   if (action === 'toggle-site-exception') toggleActiveSiteException();
   if (action === 'toggle-ad-blocker-mode') setAdBlockerMode(adBlockerSettings.mode === 'lightweight' ? 'reinforced' : 'lightweight');
@@ -927,7 +923,7 @@ app.whenReady().then(() => {
   installRequestFilters();
   loadBrowserData();
   loadBookmarks();
-  loadInstitutionalHistory();
+  loadHistory();
   const menu = Menu.buildFromTemplate([
     { label: 'Navegacion', submenu: [
       { label: 'Enfocar direccion', accelerator: 'CommandOrControl+L', click: focusAddress },
