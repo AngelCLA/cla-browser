@@ -1,10 +1,10 @@
 # New-tab shortcuts launcher
 
 ## Objective
-Add a compact nine-dot launcher in the top-right corner of the new-tab page that reveals icon-only saved shortcuts and a dropdown listing implemented keyboard shortcuts.
+Add a compact nine-dot launcher in the top-right corner of the new-tab page that reveals icon-only saved shortcuts, implemented keyboard shortcuts, and intuitive panel dismissal and scrolling.
 
 ## Problem and why
-The new-tab page needs a compact way to open saved bookmarks and discover browser keyboard shortcuts without changing the central page layout.
+The new-tab page needs a compact way to open saved bookmarks, discover browser keyboard shortcuts, and interact with a long panel without awkward dismissal or scrollbar styling.
 
 ## Scope and constraints
 - Reuse the existing bookmark data and persistence; do not introduce a second shortcut store.
@@ -12,12 +12,13 @@ The new-tab page needs a compact way to open saved bookmarks and discover browse
 - Expose only the bookmark data and navigation capability needed by the new-tab page, with sender validation.
 - Keep labels and accessible names clear, support keyboard interaction, and preserve the current appearance outside the launcher.
 - Show saved destinations as favicon-only tiles with accessible names/tooltips; include an expandable keyboard-shortcut reference based only on shortcuts actually implemented in the browser.
+- Close the panel on outside pointer interaction while keeping clicks inside the panel and its launcher behavior intact; visually integrate, but do not hide, the panel scrollbar.
 - No remote operations, publishing, or delivery actions.
 
 ## Delivery
 - Strategy: ask-on-risk (default).
-- Forecast: under 400 authored changed lines for the current feature slice; two work units total.
-- Route: NT-1 delegated direct (multiple non-trivial files); NT-2 delegated direct (renderer plus integration tests, after mapping keyboard behavior).
+- Forecast: under 400 authored changed lines for the current feature slice; three work units total.
+- Route: NT-1 delegated direct (multiple non-trivial files); NT-2 delegated direct (renderer plus integration tests, after mapping keyboard behavior); NT-3 delegated direct (outside-click behavior, scrollbar styling, and integration tests).
 
 ## Tasks
 - [x] NT-1 — Add the launcher UI and a narrowly scoped, sender-validated bridge to show and open existing bookmarks.
@@ -37,6 +38,14 @@ The new-tab page needs a compact way to open saved bookmarks and discover browse
   - Commit evidence: `dcc4167` (`feat(new-tab): add keyboard shortcuts dropdown`).
   - Review outcome: RDD on; assessment from `a25c69e2f28bb2efa673d7d2861c26863271bfdd` returned medium risk, `review_due: false`, reason `under_budget` (285 changed lines).
   - Route: delegated direct. Trigger: two UI behaviors/files plus repository-wide keyboard-shortcut mapping; writer owns implementation and test preparation.
+- [ ] NT-3 — Close the panel when clicking outside and style its scrollbar to blend with the panel.
+  - Acceptance: clicking outside the panel dismisses it and resets `aria-expanded`; interactions inside the panel work normally; the scrollbar remains usable and keyboard accessible while its track/thumb visually match the dark panel in both editions.
+  - Checks: add focused Electron integration assertions first and observe RED; run `node --test test/toolbar-tabs.test.js` and `npm test`.
+  - Verification: RED observed in both editions for outside dismissal. Writer reports focused tests passed (2 tests) and `npm test` passed (42 tests); parent repeated the focused tests successfully (2 tests), `git diff --check` passed, and the pre-commit medium-risk assessment returned `review_due: false`, `under_budget` (74 changed lines).
+  - Implementation evidence: outside pointer presses close and reset `aria-expanded` without stealing focus; panel-internal actions remain open; Escape restores launcher focus; Chromium and Firefox scrollbar styles keep scrolling visible and integrated.
+  - Commit evidence: pending work-unit commit.
+  - Review outcome: pending committed-candidate assessment.
+  - Route: delegated direct. Trigger: implementation spans renderer behavior and styles plus integration coverage.
 
 ## Next step
-NT-2 is complete. No further implementation is pending.
+Create the authorized NT-3 work-unit commit, record the final assessment and commit identity here and in the Engram mirror, then close the feature task.

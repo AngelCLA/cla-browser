@@ -124,18 +124,40 @@ for (const edition of ['personal', 'institutional']) {
           await new Promise((resolve) => setTimeout(resolve, 10));
         }
         const label = panel?.textContent;
+        const expanded = button.getAttribute('aria-expanded');
         const entry = panel?.querySelector('button');
         const shortcutDisclosure = panel?.querySelector('details');
+        shortcutDisclosure?.querySelector('summary').click();
+        const staysOpenAfterDisclosure = !panel.hidden && button.getAttribute('aria-expanded') === 'true';
+        shortcutDisclosure?.querySelector('summary').click();
         entry?.click();
+        const staysOpenAfterShortcut = !panel.hidden && button.getAttribute('aria-expanded') === 'true';
+        const shortcutColumns = getComputedStyle(document.querySelector('.shortcuts-list')).gridTemplateColumns.split(' ').length;
+        const outside = document.querySelector('main');
+        outside.tabIndex = -1;
+        outside.focus();
+        const focusedOutside = document.activeElement === outside;
+        outside.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' }));
+        const dismissedOutside = panel.hidden && button.getAttribute('aria-expanded') === 'false';
+        const focusPreserved = document.activeElement === outside;
+        button.click();
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        const escapeCloses = panel.hidden && button.getAttribute('aria-expanded') === 'false';
+        const escapeRestoresFocus = document.activeElement === button;
         const favicon = entry?.querySelector('.shortcut-favicon');
         const launcherStyles = [...document.styleSheets].flatMap((sheet) => [...sheet.cssRules])
           .filter((rule) => rule.selectorText === '.shortcuts-launcher' || rule.selectorText === '.shortcuts-launcher:hover' || rule.selectorText === '.shortcuts-launcher:focus-visible')
           .map((rule) => ({ selector: rule.selectorText, background: rule.style.backgroundColor, borderColor: rule.style.borderColor, outline: rule.style.outline }));
         return {
-          expanded: button.getAttribute('aria-expanded'), label, unsafeAccepted,
+          expanded, label, unsafeAccepted,
+          staysOpenAfterDisclosure, staysOpenAfterShortcut, focusedOutside, dismissedOutside, focusPreserved,
+          escapeCloses, escapeRestoresFocus,
+          scrollbarStyles: [...document.styleSheets].flatMap((sheet) => [...sheet.cssRules])
+            .filter((rule) => rule.selectorText?.startsWith('.shortcuts-panel::-webkit-scrollbar'))
+            .map((rule) => ({ selector: rule.selectorText, width: rule.style.width, background: rule.style.backgroundColor, borderRadius: rule.style.borderRadius })),
           shortcutEntry: entry && {
             text: entry.textContent.trim(), ariaLabel: entry.getAttribute('aria-label'), title: entry.title,
-            columns: getComputedStyle(document.querySelector('.shortcuts-list')).gridTemplateColumns.split(' ').length,
+            columns: shortcutColumns,
           },
           keyboardReference: shortcutDisclosure && {
             tag: shortcutDisclosure.tagName,
@@ -149,6 +171,18 @@ for (const edition of ['personal', 'institutional']) {
         };
       })()`), newTab.webContentsId);
       assert.equal(shortcutsPage.expanded, 'true');
+       assert.equal(shortcutsPage.staysOpenAfterDisclosure, true, 'interacting with the disclosure keeps the panel open');
+       assert.equal(shortcutsPage.staysOpenAfterShortcut, true, 'activating a shortcut keeps the panel open');
+       assert.equal(shortcutsPage.focusedOutside, true);
+       assert.equal(shortcutsPage.dismissedOutside, true, 'an outside pointer press dismisses the panel');
+       assert.equal(shortcutsPage.focusPreserved, true, 'pointer dismissal does not steal focus');
+       assert.equal(shortcutsPage.escapeCloses, true, 'Escape closes and resets aria-expanded');
+       assert.equal(shortcutsPage.escapeRestoresFocus, true, 'Escape restores focus to the launcher');
+       assert.deepEqual(shortcutsPage.scrollbarStyles, [
+         { selector: '.shortcuts-panel::-webkit-scrollbar', width: '8px', background: '', borderRadius: '' },
+         { selector: '.shortcuts-panel::-webkit-scrollbar-track', width: '', background: 'transparent', borderRadius: '' },
+         { selector: '.shortcuts-panel::-webkit-scrollbar-thumb', width: '', background: 'rgb(82, 82, 91)', borderRadius: '8px' },
+       ]);
        assert.doesNotMatch(shortcutsPage.label, /Saved shortcut|example\.test/, 'saved names and URLs are not visible');
        assert.deepEqual(shortcutsPage.shortcutEntry, {
          text: '', ariaLabel: 'Saved shortcut', title: 'Saved shortcut — https://example.test/shortcut',
