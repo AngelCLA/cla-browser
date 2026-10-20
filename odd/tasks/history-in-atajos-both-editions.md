@@ -27,9 +27,9 @@ The Atajos panel lacks a History action, while history recording and the History
   - Checks: add integration coverage first and observe RED for both editions, History panel action, keyboard action, returned history entries, persistence, and unauthorized IPC; run `node --test test/toolbar-tabs.test.js` and `npm test`.
   - Verification: RED observed in both editions because the Atajos panel did not expose “Historial”. Final `node --test test/toolbar-tabs.test.js` passed (2/2) and `npm test` passed (42/42); `git diff --check` passed. Tests verify seeded history loads in both editions, the Atajos action and Ctrl/Cmd+H open a dedicated tab, unrelated renderers cannot read entries, and a new visit is persisted locally in both editions. One intermediate parent spot-check failed once at a native-focus assertion in the personal case; a verifier run and the final full suite passed, so the cause remains indeterminate.
   - Implementation evidence: generalized history load/save/show routines to both editions; history recording still uses existing exclusions and normalization; `browser:get-history` requires the active tab to be the History page; Atajos links to History in a dedicated tab.
-  - Commit evidence: pending work-unit commit.
-  - Review outcome: pending committed assessment against the last reviewed boundary.
+  - Commit evidence: `284bdcd` (`feat(history): expose browsing history in both editions`).
+  - Review outcome: RDD on; committed base-diff assessment against `ea9f48c` returned medium risk, `review_due: false`, reason `under_budget` (291 changed lines); the slice remains pending until the delivery budget is reached.
   - Route: delegated direct. Trigger: history persistence and route changes span main process, renderer, and integration coverage.
 
 ## Next step
-Record the HI-1 work-unit commit and committed assessment, then close this feature task.
+Feature implementation and verification complete; HI-1 is closed.
