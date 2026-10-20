@@ -7,6 +7,12 @@ contextBridge.exposeInMainWorld('claBrowserHistory', {
 contextBridge.exposeInMainWorld('claBrowserShortcuts', {
   getBookmarks: () => ipcRenderer.invoke('browser:get-shortcuts'),
   openBookmark: (url) => ipcRenderer.invoke('browser:open-shortcut', url),
+  openPage: (page) => ipcRenderer.invoke('browser:open-local-page', page),
+});
+
+contextBridge.exposeInMainWorld('claBrowserLocalPage', {
+  getBookmarks: () => ipcRenderer.invoke('browser:get-local-bookmarks'),
+  openBookmark: (url) => ipcRenderer.invoke('browser:open-local-bookmark', url),
 });
 
 let lastZoomAt = 0;

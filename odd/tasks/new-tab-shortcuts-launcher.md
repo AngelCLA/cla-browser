@@ -1,7 +1,7 @@
 # New-tab shortcuts launcher
 
 ## Objective
-Add a compact nine-dot launcher in the top-right corner of the new-tab page that reveals the first nine icon-only saved shortcuts, clearly labeled as “Atajos,” implemented keyboard shortcuts, and intuitive panel dismissal and scrolling.
+Add a compact nine-dot launcher in the top-right corner of the new-tab page that reveals the first nine icon-only saved shortcuts, links to dedicated tabs for all bookmarks and keyboard shortcuts, and provides intuitive panel dismissal and scrolling.
 
 ## Problem and why
 The new-tab page needs a compact way to open saved bookmarks, discover browser keyboard shortcuts, and interact with a long panel without awkward dismissal or scrollbar styling.
@@ -14,13 +14,16 @@ The new-tab page needs a compact way to open saved bookmarks, discover browser k
 - Show saved destinations as favicon-only tiles with accessible names/tooltips; include an expandable keyboard-shortcut reference based only on shortcuts actually implemented in the browser.
 - Close the panel on outside pointer interaction while keeping clicks inside the panel and its launcher behavior intact; visually integrate, but do not hide, the panel scrollbar.
 - Label the interface in Spanish (“Atajos”) and show up to the first nine saved bookmarks in their existing bookmarks-bar order; show all available entries when fewer than nine exist.
+- In institutional mode, constrain branding image styles to the new-tab logo so shortcut favicons retain their square dimensions.
+- Provide “Ver todos los marcadores” and “Atajos de teclado” actions that open dedicated local browser tabs available in both editions; clicking a bookmark from the full list navigates in that same tab.
 - No remote operations, publishing, or delivery actions.
 
 ## Delivery
 - Strategy: ask-on-risk (default).
-- Forecast: approximately 430 authored changed lines across four work units, crossing the ~400-line delivery budget.
+- Forecast: approximately 680 authored changed lines across five work units, crossing the ~400-line delivery budget.
 - Chain strategy: `stacked-to-main` (user-selected before the NT-4 commit).
-- Route: NT-1 delegated direct (multiple non-trivial files); NT-2 delegated direct (renderer plus integration tests, after mapping keyboard behavior); NT-3 delegated direct (outside-click behavior, scrollbar styling, and integration tests); NT-4 delegated direct (main bookmark ordering, renderer display, and integration tests).
+- Test strategy: retain parallel `npm test` execution and investigate/fix the native-focus failure (user-selected).
+- Route: NT-1 delegated direct (multiple non-trivial files); NT-2 delegated direct (renderer plus integration tests, after mapping keyboard behavior); NT-3 delegated direct (outside-click behavior, scrollbar styling, and integration tests); NT-4 delegated direct (main bookmark ordering, renderer display, and integration tests); NT-5 delegated direct (two local views, scoped main/preload bridges, launcher actions, and integration tests).
 
 ## Tasks
 - [x] NT-1 — Add the launcher UI and a narrowly scoped, sender-validated bridge to show and open existing bookmarks.
@@ -56,6 +59,14 @@ The new-tab page needs a compact way to open saved bookmarks, discover browser k
   - Commit evidence: `7ddae21` (`feat(bookmarks): append new favorites`).
   - Review outcome: RDD on; assessment from `a25c69e2f28bb2efa673d7d2861c26863271bfdd` returned medium risk, `review_due: false`, reason `under_budget` (379 changed lines).
   - Route: delegated direct. Trigger: bookmark insertion, UI copy, and bounded-list behavior span main-process code, renderer, and integration coverage.
+- [ ] NT-5 — Replace the keyboard dropdown with dedicated local tabs for all bookmarks and keyboard shortcuts.
+  - Acceptance: the launcher panel provides “Ver todos los marcadores” and “Atajos de teclado”; each opens a separate browser tab using the shared local-page/createTab pattern, styled consistently with Restricted; the bookmark page shows all entries in bookmarks-bar order and opening one navigates that same tab; the keyboard page contains the implemented shortcut reference; both editions work, local-page data/navigation bridges are sender-scoped, and institutional favicon icons remain square.
+  - Checks: add Electron integration coverage for both actions in both editions, full bookmark ordering and same-tab navigation, shortcut-reference parity, scoped IPC, institutional favicon sizing, and parallel test focus; run `node --test test/toolbar-tabs.test.js` and parallel `npm test`.
+  - Verification: RED observed in both editions because the launcher lacked “Ver todos los marcadores”; the institutional favicon probe also observed 280px/absolute styling instead of 24px/static. After fixes, writer reports `node --test test/toolbar-tabs.test.js` and parallel `npm test` passed (2 and 42 tests respectively); parent repeated the focused test successfully (2 tests), and `git diff --check` passed. An earlier parallel run failed once at `test/toolbar-tabs.test.js:495`; a bounded native-focus wait now allows restoration without changing test concurrency.
+  - Implementation evidence: panel actions open separate local tabs; bookmarks and keyboard pages follow the Restricted dark-page pattern; bookmark data/navigation handlers require the active WebContents, exact local page URL, and normalized saved bookmark URL; institutional image rules target `.brand-logo`, leaving favicons 24px and static.
+  - Commit evidence: pending work-unit commit.
+  - Review outcome: the pre-commit assessment was unassessable because the two new renderer pages were untracked; committed-candidate assessment pending.
+  - Route: delegated direct. Trigger: multiple new local views, IPC/preload access, launcher changes, and cross-edition integration tests.
 
 ## Next step
-NT-4 is complete. No further implementation is pending.
+Create the NT-5 work-unit commit, record the committed assessment, and close the feature task.

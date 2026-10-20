@@ -118,25 +118,66 @@ for (const edition of ['personal', 'institutional']) {
           bridge: typeof window.claBrowserShortcuts?.getBookmarks,
         })`);
       }, newTab.webContentsId), { button: 'BUTTON', bridge: 'function' });
+      const launcherActions = await electron.evaluate(({ webContents }, id) => webContents.fromId(id).executeJavaScript(`(() => {
+        document.querySelector('[aria-label="Abrir atajos"]').click();
+        return document.querySelector('#shortcuts-panel').innerText;
+      })()`), newTab.webContentsId);
+      assert.match(launcherActions, /Ver todos los marcadores/);
+      assert.match(launcherActions, /Atajos de teclado/);
+      const baselineTabCount = (await state()).tabs.length;
+      await electron.evaluate(({ webContents }, id) => webContents.fromId(id).executeJavaScript(`document.querySelector('[data-local-page="bookmarks"]').click()`), newTab.webContentsId);
+      await eventually(async () => (await state()).tabs.length, baselineTabCount + 1, 'bookmark action opens a dedicated tab');
+      await eventually(async () => (await state()).tabs.some((tab) => tab.url.includes('/bookmarks/index.html')), true, 'bookmark tab completes local navigation');
+      const bookmarksTab = (await state()).tabs.find((tab) => tab.url.includes('/bookmarks/index.html'));
+      assert.ok(bookmarksTab, 'bookmark page uses a distinct internal tab');
+      const fullBookmarkPage = await electron.evaluate(({ webContents }) => {
+        const page = webContents.getAllWebContents().find((wc) => wc.getURL().endsWith('/bookmarks/index.html'));
+        return page.executeJavaScript(`(async () => ({ labels: [...document.querySelectorAll('#bookmarks button')].map((button) => button.querySelector('span')?.textContent), bridge: typeof window.claBrowserLocalPage?.getBookmarks, unsafeNavigation: await window.claBrowserLocalPage.openBookmark('javascript:alert(1)') }))()`);
+      });
+      assert.equal(fullBookmarkPage.bridge, 'function');
+      assert.equal(fullBookmarkPage.unsafeNavigation, false, 'bookmark page rejects URLs outside the saved list');
+      assert.deepEqual(fullBookmarkPage.labels, bookmarks.map(({ title }) => title), 'all saved bookmarks retain their order beyond nine entries');
+      const unauthorizedLocalPageCalls = await electron.evaluate(({ webContents }, id) => webContents.fromId(id).executeJavaScript(`(async () => ({ bookmarks: await window.claBrowserLocalPage.getBookmarks(), open: await window.claBrowserShortcuts.openPage('bookmarks') }))()`), newTab.webContentsId);
+      assert.deepEqual(unauthorizedLocalPageCalls, { bookmarks: [], open: false }, 'inactive pages cannot request local bookmark data or open local pages');
+      const targetBookmark = bookmarksTab.id;
+      const bookmarkToOpenIndex = Math.min(10, bookmarks.length - 1);
+      await electron.evaluate(({ webContents }, bookmarkIndex) => {
+        const page = webContents.getAllWebContents().find((wc) => wc.getURL().endsWith('/bookmarks/index.html'));
+        return page.executeJavaScript(`document.querySelectorAll('#bookmarks button')[${bookmarkIndex}].click()`);
+      }, bookmarkToOpenIndex);
+      await eventually(async () => (await state()).tabs.find((tab) => tab.id === targetBookmark)?.url, bookmarks[bookmarkToOpenIndex].url, 'bookmark selection navigates its current tab');
+      await dom((id) => window.browser.closeTab(id), targetBookmark);
+      await eventually(async () => (await state()).tabs.length, baselineTabCount);
+          await electron.evaluate(({ webContents }, id) => webContents.fromId(id).executeJavaScript(`document.querySelector('[aria-label="Abrir atajos"]').click(); document.querySelector('[data-local-page="keyboard-shortcuts"]').click()`), newTab.webContentsId);
+      await eventually(async () => (await state()).tabs.length, baselineTabCount + 1, 'keyboard action opens a dedicated tab');
+      await eventually(async () => (await state()).tabs.some((tab) => tab.url.includes('/keyboard-shortcuts/index.html')), true, 'keyboard tab completes local navigation');
+      const keyboardTab = (await state()).tabs.find((tab) => tab.url.includes('/keyboard-shortcuts/index.html'));
+      assert.ok(keyboardTab, 'keyboard reference uses a distinct internal tab');
+      await dom((id) => window.browser.closeTab(id), keyboardTab.id);
+      await eventually(async () => (await state()).tabs.length, baselineTabCount);
       const shortcutsPage = await electron.evaluate(({ webContents }, id) => webContents.fromId(id).executeJavaScript(`(async () => {
         const unsafeAccepted = await window.claBrowserShortcuts.openBookmark('javascript:alert(1)');
         const button = document.querySelector('[aria-label="Abrir atajos"]');
         button.click();
         const panel = document.querySelector('#shortcuts-panel');
-        for (let attempt = 0; attempt < 100 && !panel.querySelector('button'); attempt += 1) {
+        for (let attempt = 0; attempt < 100 && !panel.querySelector('.shortcut-entry'); attempt += 1) {
           await new Promise((resolve) => setTimeout(resolve, 10));
         }
         const label = panel?.textContent;
         const expanded = button.getAttribute('aria-expanded');
         const bookmarkEntries = [...panel.querySelectorAll('.shortcut-entry')].map((item) => item.getAttribute('aria-label'));
-        const entry = panel?.querySelector('button');
+        const entry = panel?.querySelector('.shortcut-entry');
         const shortcutDisclosure = panel?.querySelector('details');
-        shortcutDisclosure?.querySelector('summary').click();
-        const staysOpenAfterDisclosure = !panel.hidden && button.getAttribute('aria-expanded') === 'true';
-        shortcutDisclosure?.querySelector('summary').click();
-        entry?.click();
+        const inlineDisclosureAbsent = !shortcutDisclosure;
+        const actions = [...panel.querySelectorAll('.panel-action')].map((item) => item.textContent.trim());
         const staysOpenAfterShortcut = !panel.hidden && button.getAttribute('aria-expanded') === 'true';
-        const shortcutColumns = getComputedStyle(document.querySelector('.shortcuts-list')).gridTemplateColumns.split(' ').length;
+         const shortcutColumns = getComputedStyle(document.querySelector('.shortcuts-list')).gridTemplateColumns.split(' ').length;
+         const faviconProbe = document.createElement('img');
+         faviconProbe.className = 'shortcut-favicon';
+         document.body.append(faviconProbe);
+         const faviconProbeStyles = getComputedStyle(faviconProbe);
+         const faviconSizing = { width: faviconProbeStyles.width, height: faviconProbeStyles.height, position: faviconProbeStyles.position };
+         faviconProbe.remove();
         const outside = document.querySelector('main');
         outside.tabIndex = -1;
         outside.focus();
@@ -158,7 +199,7 @@ for (const edition of ['personal', 'institutional']) {
           panelLabel: panel.getAttribute('aria-label'),
           heading: panel.querySelector('h2')?.textContent.trim(),
           bookmarkEntries,
-          staysOpenAfterDisclosure, staysOpenAfterShortcut, focusedOutside, dismissedOutside, focusPreserved,
+          inlineDisclosureAbsent, actions, staysOpenAfterShortcut, focusedOutside, dismissedOutside, focusPreserved,
           escapeCloses, escapeRestoresFocus,
           scrollbarStyles: [...document.styleSheets].flatMap((sheet) => [...sheet.cssRules])
             .filter((rule) => rule.selectorText?.startsWith('.shortcuts-panel::-webkit-scrollbar'))
@@ -167,14 +208,9 @@ for (const edition of ['personal', 'institutional']) {
             text: entry.textContent.trim(), ariaLabel: entry.getAttribute('aria-label'), title: entry.title,
             columns: shortcutColumns,
           },
-          keyboardReference: shortcutDisclosure && {
-            tag: shortcutDisclosure.tagName,
-            open: shortcutDisclosure.open,
-            summary: shortcutDisclosure.querySelector('summary')?.textContent.trim(),
-            entries: [...shortcutDisclosure.querySelectorAll('li')].map((item) =>
-              item.closest('ul').previousElementSibling.textContent + ' — ' + item.querySelector('kbd').textContent + ' — ' + item.querySelector('span').textContent),
-          },
-          favicon: favicon && { tag: favicon.tagName, src: entry.dataset.faviconSrc, alt: favicon.getAttribute('alt'), ariaHidden: favicon.getAttribute('aria-hidden') },
+          keyboardReference: null,
+           favicon: favicon && { tag: favicon.tagName, src: entry.dataset.faviconSrc, alt: favicon.getAttribute('alt'), ariaHidden: favicon.getAttribute('aria-hidden') },
+           faviconSizing,
           launcherStyles,
         };
       })()`), newTab.webContentsId);
@@ -182,9 +218,9 @@ for (const edition of ['personal', 'institutional']) {
       assert.equal(shortcutsPage.launcherLabel, 'Abrir atajos');
       assert.equal(shortcutsPage.panelLabel, 'Atajos del navegador');
       assert.equal(shortcutsPage.heading, 'Atajos');
-      assert.equal(shortcutsPage.keyboardReference.summary, 'Atajos de teclado');
+      assert.equal(shortcutsPage.inlineDisclosureAbsent, true);
+      assert.deepEqual(shortcutsPage.actions, ['Ver todos los marcadores', 'Atajos de teclado']);
       assert.deepEqual(shortcutsPage.bookmarkEntries, bookmarks.slice(0, 9).map(({ title }) => title), 'bookmarks remain in bar order and are capped at nine');
-       assert.equal(shortcutsPage.staysOpenAfterDisclosure, true, 'interacting with the disclosure keeps the panel open');
        assert.equal(shortcutsPage.staysOpenAfterShortcut, true, 'activating a shortcut keeps the panel open');
        assert.equal(shortcutsPage.focusedOutside, true);
        assert.equal(shortcutsPage.dismissedOutside, true, 'an outside pointer press dismisses the panel');
@@ -197,45 +233,34 @@ for (const edition of ['personal', 'institutional']) {
          { selector: '.shortcuts-panel::-webkit-scrollbar-thumb', width: '', background: 'rgb(82, 82, 91)', borderRadius: '8px' },
        ]);
        assert.doesNotMatch(shortcutsPage.label, /Saved shortcut|example\.test/, 'saved names and URLs are not visible');
-       assert.deepEqual(shortcutsPage.shortcutEntry, {
+         assert.deepEqual(shortcutsPage.shortcutEntry, {
          text: '', ariaLabel: 'Saved shortcut 1', title: 'Saved shortcut 1 — https://example.test/shortcut-1',
          columns: 4,
-       });
-       assert.deepEqual(shortcutsPage.keyboardReference, {
-         tag: 'DETAILS', open: false, summary: 'Atajos de teclado',
-         entries: [
-           'Navigation — Ctrl/Cmd+L — Focus the address bar',
-           'Navigation — Ctrl/Cmd+[ / Ctrl/Cmd+] — Go back / forward',
-           'Navigation — Ctrl/Cmd+H — Show history',
-           'Tabs — Ctrl/Cmd+T — Open a new tab',
-           'Tabs — Ctrl/Cmd+W — Close the current tab',
-           'Tabs — Ctrl/Cmd+Shift+T — Reopen the last closed tab',
-           'Tabs — Ctrl/Cmd+Tab / Ctrl/Cmd+Shift+Tab — Select the next / previous tab',
-           'Tabs — Ctrl/Cmd+1–8 — Select tab 1–8',
-           'Tabs — Ctrl/Cmd+9 — Select the last tab',
-           'Page — Ctrl/Cmd+R / F5 — Reload the page',
-           'Page — Ctrl/Cmd+Shift+R — Reload ignoring cache',
-           'Page — Ctrl/Cmd+P — Print the page',
-           'Window and view — F11 — Toggle fullscreen',
-           'Window and view — Ctrl/Cmd+plus/equal / minus / 0 — Zoom in / out / reset',
-           'Bookmarks — Ctrl/Cmd+D — Add or remove a bookmark',
-           'Bookmarks — Ctrl/Cmd+Shift+B — Toggle the bookmarks bar',
-           'Developer — Ctrl/Cmd+Shift+I / F12 — Toggle developer tools',
-         ],
-       });
+         });
+          await electron.evaluate(({ webContents }, id) => webContents.fromId(id).executeJavaScript(`document.querySelector('[aria-label="Abrir atajos"]').click(); document.querySelector('[data-local-page="keyboard-shortcuts"]').click()`), newTab.webContentsId);
+         await eventually(async () => (await state()).tabs.some((tab) => tab.url.includes('/keyboard-shortcuts/index.html')), true);
+         const dedicatedShortcutPage = await electron.evaluate(({ webContents }) => {
+          const page = webContents.getAllWebContents().find((wc) => wc.getURL().endsWith('/keyboard-shortcuts/index.html'));
+          return page.executeJavaScript(`({ title: document.querySelector('h1')?.textContent, count: document.querySelectorAll('kbd').length, bindings: [...document.querySelectorAll('kbd')].map((node) => node.textContent) })`);
+        });
+         assert.equal(dedicatedShortcutPage.title, 'Atajos de teclado');
+         assert.equal(dedicatedShortcutPage.count, 17, 'dedicated page retains the full keyboard reference');
+         await dom((id) => window.browser.closeTab(id), (await state()).tabs.find((tab) => tab.url.includes('/keyboard-shortcuts/index.html')).id);
       assert.equal(shortcutsPage.unsafeAccepted, false, 'untrusted non-bookmark destinations are rejected');
-      assert.deepEqual(shortcutsPage.favicon, {
-        tag: shortcutsPage.favicon?.tag === 'IMG' ? 'IMG' : 'SPAN',
-        src: 'https://example.test/favicon.ico',
-        alt: shortcutsPage.favicon?.tag === 'IMG' ? '' : null,
-        ariaHidden: shortcutsPage.favicon?.tag === 'SPAN' ? 'true' : null,
-      });
-      assert.deepEqual(shortcutsPage.launcherStyles, [
+       assert.deepEqual(shortcutsPage.favicon, {
+         tag: shortcutsPage.favicon?.tag === 'IMG' ? 'IMG' : 'SPAN',
+         src: 'https://example.test/favicon.ico',
+         alt: shortcutsPage.favicon?.tag === 'IMG' ? '' : null,
+         ariaHidden: shortcutsPage.favicon?.tag === 'SPAN' ? 'true' : null,
+       });
+       assert.deepEqual(shortcutsPage.faviconSizing, { width: '24px', height: '24px', position: 'static' });
+       assert.deepEqual(shortcutsPage.launcherStyles, [
         { selector: '.shortcuts-launcher', background: 'transparent', borderColor: 'transparent', outline: '' },
         { selector: '.shortcuts-launcher:hover', background: 'rgb(39, 39, 42)', borderColor: 'rgb(113, 113, 122)', outline: '' },
         { selector: '.shortcuts-launcher:focus-visible', background: '', borderColor: '', outline: 'rgb(161, 161, 170) solid 2px' },
-      ]);
-      await eventually(async () => (await state()).tabs[0].url, 'https://example.test/shortcut-1');
+       ]);
+       await electron.evaluate(({ webContents }, id) => webContents.fromId(id).executeJavaScript(`document.querySelector('[aria-label="Abrir atajos"]').click(); document.querySelector('.shortcut-entry').click()`), newTab.webContentsId);
+       await eventually(async () => (await state()).tabs[0].url, 'https://example.test/shortcut-1');
       assert.deepEqual(await arrows(), hiddenArrows, 'a single tab reserves no arrow space');
       await assertAddAdjacent();
       assert.deepEqual(await dom(() => {
@@ -327,7 +352,7 @@ for (const edition of ['personal', 'institutional']) {
       await key('Right');
       await key('Space');
       await eventually(async () => (await state()).activeTabId, ids[1]);
-      assert.equal(await nativeFocus(), true);
+       assert.equal(await nativeFocus(), true);
 
       await dom(() => { globalThis.savedTab = document.activeElement; document.querySelector('#tab-list').scrollLeft = 300; });
       const intentionalScroll = await dom(() => document.querySelector('#tab-list').scrollLeft);
@@ -473,9 +498,9 @@ for (const edition of ['personal', 'institutional']) {
       await dom(() => document.querySelector('#tabs-previous').focus());
       assert.equal(await nativeFocus(), true);
       await resize(fittingWidth);
-      await eventually(arrows, hiddenArrows);
-      await eventually(focusedId, activeBeforeClose, 'hiding a focused arrow restores the selected tab focus');
-      assert.equal(await nativeFocus(), true);
+       await eventually(arrows, hiddenArrows);
+       await eventually(focusedId, activeBeforeClose, 'hiding a focused arrow restores the selected tab focus');
+       await eventually(nativeFocus, true, 'resize and DOM focus restoration return native toolbar focus');
       await focus(activeId);
       await resize(500);
       await eventually(arrows, shownArrows, 'shrinking restores overflow controls');

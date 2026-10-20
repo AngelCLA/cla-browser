@@ -27,18 +27,14 @@
         .shortcut-favicon { width: 24px; height: 24px; }
          .shortcut-favicon.fallback { border: 1px solid currentColor; border-radius: 50%; opacity: .65; }
         .shortcuts-empty { grid-column: 1 / -1; color: #a1a1aa; font-size: 12px; }
-        .keyboard-reference { margin: 8px 0 0; border-top: 1px solid #3f3f46; }
-        .keyboard-reference summary { padding: 10px 8px 4px; color: #e4e4e7; cursor: pointer; font-size: 12px; font-weight: 600; }
-        .keyboard-reference h3 { margin: 10px 8px 4px; color: #a1a1aa; font-size: 11px; font-weight: 600; }
-        .keyboard-reference ul { display: grid; gap: 6px; margin: 0; padding: 0 8px 4px; list-style: none; }
-        .keyboard-reference li { display: grid; gap: 2px; font-size: 12px; }
-        .keyboard-reference kbd { color: #d4d4d8; font: 11px ui-monospace, SFMono-Regular, Consolas, monospace; }
-        .keyboard-reference li span { color: #a1a1aa; }
+         .panel-actions { display: grid; gap: 2px; margin-top: 8px; padding-top: 6px; border-top: 1px solid #3f3f46; }
+         .panel-action { width: 100%; padding: 9px 8px; border: 0; border-radius: 7px; background: transparent; color: #e4e4e7; font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+         .panel-action:hover, .panel-action:focus-visible { outline: none; background: #303036; }
        .shortcuts-empty { margin: 8px; }
       .institutional-search { display: none; }
       body.institutional { display: block; }
       body.institutional main { position: relative; width: 100%; height: 100vh; }
-      body.institutional img { position: absolute; right: 0; bottom: calc(50% + 56px); left: 0; width: min(280px, 58vw); margin: auto; }
+       body.institutional .brand-logo { position: absolute; right: 0; bottom: calc(50% + 56px); left: 0; width: min(280px, 58vw); margin: auto; }
       body.institutional .institutional-search { position: absolute; top: 50%; right: 0; left: 0; display: block; width: min(620px, calc(100vw - 40px)); margin: 0 auto; transform: translateY(-50%); }
       .institutional-search input { width: 100%; height: 48px; padding: 0 14px; border: 1px solid #3f3f46; border-radius: 9px; outline: 0; background: #18181b; color: #f5f5f5; font: 14px Inter, ui-sans-serif, system-ui, sans-serif; box-shadow: 0 24px 80px #0009; transition: border-color .12s, box-shadow .12s; }
       .institutional-search input::placeholder { color: #a1a1aa; }
@@ -52,51 +48,17 @@
   </head>
   <body>
     <main>
-      <img src="../../assets/cla-browser.svg" alt="CLA Browser" />
+       <img class="brand-logo" src="../../assets/cla-browser.svg" alt="CLA Browser" />
       <button class="shortcuts-launcher" type="button" aria-label="Abrir atajos" aria-expanded="false" aria-controls="shortcuts-panel">
         <span class="launcher-dots" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
       </button>
       <section class="shortcuts-panel" id="shortcuts-panel" aria-label="Atajos del navegador" hidden>
         <h2>Atajos</h2>
         <div class="shortcuts-list"></div>
-        <details class="keyboard-reference">
-          <summary>Atajos de teclado</summary>
-          <h3>Navigation</h3>
-          <ul>
-            <li><kbd>Ctrl/Cmd+L</kbd><span>Focus the address bar</span></li>
-            <li><kbd>Ctrl/Cmd+[ / Ctrl/Cmd+]</kbd><span>Go back / forward</span></li>
-            <li><kbd>Ctrl/Cmd+H</kbd><span>Show history</span></li>
-          </ul>
-          <h3>Tabs</h3>
-          <ul>
-            <li><kbd>Ctrl/Cmd+T</kbd><span>Open a new tab</span></li>
-            <li><kbd>Ctrl/Cmd+W</kbd><span>Close the current tab</span></li>
-            <li><kbd>Ctrl/Cmd+Shift+T</kbd><span>Reopen the last closed tab</span></li>
-            <li><kbd>Ctrl/Cmd+Tab / Ctrl/Cmd+Shift+Tab</kbd><span>Select the next / previous tab</span></li>
-            <li><kbd>Ctrl/Cmd+1–8</kbd><span>Select tab 1–8</span></li>
-            <li><kbd>Ctrl/Cmd+9</kbd><span>Select the last tab</span></li>
-          </ul>
-          <h3>Page</h3>
-          <ul>
-            <li><kbd>Ctrl/Cmd+R / F5</kbd><span>Reload the page</span></li>
-            <li><kbd>Ctrl/Cmd+Shift+R</kbd><span>Reload ignoring cache</span></li>
-            <li><kbd>Ctrl/Cmd+P</kbd><span>Print the page</span></li>
-          </ul>
-          <h3>Window and view</h3>
-          <ul>
-            <li><kbd>F11</kbd><span>Toggle fullscreen</span></li>
-            <li><kbd>Ctrl/Cmd+plus/equal / minus / 0</kbd><span>Zoom in / out / reset</span></li>
-          </ul>
-          <h3>Bookmarks</h3>
-          <ul>
-            <li><kbd>Ctrl/Cmd+D</kbd><span>Add or remove a bookmark</span></li>
-            <li><kbd>Ctrl/Cmd+Shift+B</kbd><span>Toggle the bookmarks bar</span></li>
-          </ul>
-          <h3>Developer</h3>
-          <ul>
-            <li><kbd>Ctrl/Cmd+Shift+I / F12</kbd><span>Toggle developer tools</span></li>
-          </ul>
-        </details>
+        <div class="panel-actions">
+          <button class="panel-action" type="button" data-local-page="bookmarks">Ver todos los marcadores</button>
+          <button class="panel-action" type="button" data-local-page="keyboard-shortcuts">Atajos de teclado</button>
+        </div>
       </section>
       <form class="institutional-search" role="search">
         <input aria-label="Buscar en la web" autocomplete="off" placeholder="Buscar o escribir una dirección" />
@@ -108,6 +70,7 @@
       const launcher = document.querySelector('.shortcuts-launcher');
       const shortcutsPanel = document.querySelector('#shortcuts-panel');
       const shortcutsList = document.querySelector('.shortcuts-list');
+      document.querySelectorAll('[data-local-page]').forEach((button) => button.addEventListener('click', () => window.claBrowserShortcuts.openPage(button.dataset.localPage)));
       let shortcutButtons = [];
       function closeShortcutsPanel() {
         shortcutsPanel.hidden = true;
@@ -129,7 +92,7 @@
         launcher.setAttribute('aria-expanded', String(opening));
         if (!opening) return;
         shortcutsList.replaceChildren();
-        const bookmarks = await window.claBrowserShortcuts.getBookmarks();
+         const bookmarks = await window.claBrowserShortcuts.getBookmarks();
         if (!Array.isArray(bookmarks) || !bookmarks.length) {
           const empty = document.createElement('p');
           empty.className = 'shortcuts-empty';
@@ -189,7 +152,7 @@
       if (institutional) {
         const params = new URLSearchParams(location.search);
         document.body.classList.add('institutional');
-        const logo = document.querySelector('img');
+         const logo = document.querySelector('.brand-logo');
         const logoUrl = params.get('logo');
         if (logoUrl) logo.src = logoUrl;
         logo.alt = params.get('organizationName') || 'Institucion';

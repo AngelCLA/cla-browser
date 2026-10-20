@@ -24,6 +24,8 @@ const PRELOAD_DIR = path.join(SOURCE_DIR, 'preload');
 const RENDERER_DIR = path.join(SOURCE_DIR, 'renderer');
 const HISTORY_PAGE_URL = pathToFileURL(path.join(RENDERER_DIR, 'history', 'index.html')).toString();
 const RESTRICTED_PAGE_URL = pathToFileURL(path.join(RENDERER_DIR, 'restricted', 'index.html')).toString();
+const BOOKMARKS_PAGE_URL = pathToFileURL(path.join(RENDERER_DIR, 'bookmarks', 'index.html')).toString();
+const KEYBOARD_SHORTCUTS_PAGE_URL = pathToFileURL(path.join(RENDERER_DIR, 'keyboard-shortcuts', 'index.html')).toString();
 const institutionalConfig = loadInstitutionalConfig(app.getAppPath());
 const addressAccentColor = edition === 'institutional' ? institutionalConfig.accentColor : '#fafafa';
 const blankPageUrl = pathToFileURL(path.join(RENDERER_DIR, 'new-tab', 'index.html'));
@@ -817,6 +819,25 @@ ipcMain.handle('browser:open-shortcut', (event, url) => {
   const bookmark = bookmarks.find((candidate) => candidate.url === normalizedUrl);
   if (!bookmark) return false;
   navigate(bookmark.url);
+  return true;
+});
+ipcMain.handle('browser:get-local-bookmarks', (event) => {
+  if (!tabs.some((tab) => tab.view.webContents === event.sender) || getActiveTab()?.view.webContents !== event.sender || event.sender.getURL() !== BOOKMARKS_PAGE_URL) return [];
+  return bookmarks.map(({ title, url }) => ({ title, url }));
+});
+ipcMain.handle('browser:open-local-bookmark', (event, url) => {
+  if (!tabs.some((tab) => tab.view.webContents === event.sender) || getActiveTab()?.view.webContents !== event.sender || event.sender.getURL() !== BOOKMARKS_PAGE_URL || typeof url !== 'string') return false;
+  const normalizedUrl = normalizeBookmarkUrl(url);
+  const bookmark = bookmarks.find((candidate) => candidate.url === normalizedUrl);
+  if (!bookmark) return false;
+  navigate(bookmark.url);
+  return true;
+});
+ipcMain.handle('browser:open-local-page', (event, page) => {
+  if (!tabs.some((tab) => tab.view.webContents === event.sender) || getActiveTab()?.view.webContents !== event.sender || event.sender.getURL() !== BLANK_PAGE_URL) return false;
+  const url = page === 'bookmarks' ? BOOKMARKS_PAGE_URL : page === 'keyboard-shortcuts' ? KEYBOARD_SHORTCUTS_PAGE_URL : null;
+  if (!url) return false;
+  createTab(url);
   return true;
 });
 ipcMain.on('browser:navigate', (event, address) => {
