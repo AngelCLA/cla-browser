@@ -56,12 +56,16 @@
       #bookmark-current.saved svg { fill: currentColor; }
       #bookmarks { display: flex; height: 32px; align-items: center; gap: 2px; overflow: hidden; padding: 3px 8px; border-bottom: 1px solid #262626; background: #0a0a0a; }
       .bookmarks-hidden #bookmarks { display: none; }
-      .bookmark-item { display: flex; width: 24px; height: 24px; align-items: center; justify-content: center; border-radius: 4px; color: #c7c7c7; }
+       .bookmark-item { display: flex; width: 24px; height: 24px; align-items: center; justify-content: center; border-radius: 4px; color: #c7c7c7; }
+       .bookmark-item.dragging { opacity: .35; }
+       .bookmark-item.drag-before { box-shadow: inset 2px 0 #fafafa; }
+       .bookmark-item.drag-after { box-shadow: inset -2px 0 #fafafa; }
       .bookmark { display: grid; width: 18px; height: 18px; place-items: center; padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; }
       .bookmark:hover { background: #262626; color: #fff; }
        .bookmark-favicon { width: 14px; height: 14px; flex: 0 0 auto; }
        .bookmark-favicon.fallback { border: 1px solid currentColor; border-radius: 50%; opacity: .65; }
-      .bookmarks-empty { padding: 0 8px; color: #777; font-size: 11px; }
+       .bookmarks-empty { padding: 0 8px; color: #777; font-size: 11px; }
+       .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
       #suggestions { display: none; margin: 8px 10px 8px; padding-top: 4px; overflow: hidden; border: 1px solid #333; border-radius: 6px; background: #171717; }
       #suggestions.visible { display: block; }
       .suggestion { display: grid; width: 100%; height: 42px; grid-template-columns: 14px minmax(0, 1fr); align-items: center; gap: 9px; padding: 5px 10px; border: 0; border-bottom: 1px solid #292929; background: transparent; color: #e5e5e5; text-align: left; cursor: pointer; }
@@ -95,7 +99,8 @@
         <form><input id="address" aria-label="Dirección" autocomplete="off" placeholder="Buscar o escribir una dirección" /><button id="bookmark-current" class="icon-button control" type="button" data-action="toggle-bookmark" title="Añadir o quitar marcador" aria-label="Añadir o quitar marcador"><svg viewBox="0 0 24 24"><path d="m12 3 2.78 5.63 6.22.9-4.5 4.39 1.06 6.2L12 17.2l-5.56 2.92 1.06-6.2L3 9.53l6.22-.9L12 3z" /></svg></button></form>
         <button id="ad-blocker" class="icon-button control" data-action="toggle-ad-blocker" title="Activar bloqueador" aria-label="Activar bloqueador"><svg viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.5c0 4.7 3.1 8.5 7.5 9.5 4.4-1 7.5-4.8 7.5-9.5V6L12 3z" /><path d="m8.5 12 2.2 2.2 4.8-4.8" /></svg><span id="ad-blocker-count" hidden></span></button>
      </div>
-     <div id="bookmarks" aria-label="Barra de marcadores"></div>
+      <div id="bookmarks" aria-label="Barra de marcadores"></div>
+      <div id="bookmark-reorder-announcement" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
      <div id="suggestions" role="listbox" aria-label="Sugerencias"></div>
     <script>
       const tabList = document.querySelector('#tab-list');
@@ -108,7 +113,8 @@
       const suggestionsElement = document.querySelector('#suggestions');
       const maximizeIcon = document.querySelector('#maximize-icon');
       let state = { tabs: [], activeTabId: null };
-      let draggedTabId = null;
+       let draggedTabId = null;
+       let draggedBookmarkUrl = null;
       const tabNodes = new Map();
       let rovingTabId = null;
       const previousTabs = document.querySelector('#tabs-previous');
@@ -201,7 +207,7 @@
          else if (focusedId && previousState.tabs.findIndex((tab) => tab.id === focusedId) !== state.tabs.findIndex((tab) => tab.id === focusedId)) revealTab(focusedId);
          updateOverflow();
          const active = state.tabs.find((tab) => tab.id === state.activeTabId);
-         if (active && (active.restricted || document.activeElement !== address)) address.value = active.restricted ? 'Sitio restringido' : active.url;
+         if (active && (active.restricted || active.internalPage || document.activeElement !== address)) address.value = active.restricted ? 'Sitio restringido' : active.internalPage ? '' : active.url;
          address.disabled = Boolean(active?.restricted);
           bookmarkCurrent.classList.toggle('saved', Boolean(active && state.bookmarks.some((bookmark) => bookmark.url === active.url)));
           const adBlocker = state.adBlocker || { enabled: false, mode: 'lightweight', blockedRequests: 0, siteException: false };
@@ -281,7 +287,8 @@
           }
         }
         function renderBookmarks() {
-         bookmarksElement.replaceChildren();
+          const focusedUrl = document.activeElement.closest('.bookmark-item')?.title;
+          bookmarksElement.replaceChildren();
          if (!state.bookmarks.length) {
            const empty = document.createElement('span');
            empty.className = 'bookmarks-empty';
@@ -291,13 +298,49 @@
          }
          for (const bookmark of state.bookmarks) {
            const item = document.createElement('div');
-            item.className = 'bookmark-item';
+             item.className = 'bookmark-item';
+            item.draggable = true;
+            item.addEventListener('dragstart', (event) => {
+              draggedBookmarkUrl = bookmark.url;
+              item.classList.add('dragging');
+              event.dataTransfer.effectAllowed = 'move';
+              event.dataTransfer.setData('text/plain', bookmark.url);
+            });
+            item.addEventListener('dragend', () => {
+              draggedBookmarkUrl = null;
+              bookmarksElement.querySelectorAll('.drag-before, .drag-after, .dragging').forEach((node) => node.classList.remove('drag-before', 'drag-after', 'dragging'));
+            });
+            item.addEventListener('dragover', (event) => {
+              if (!draggedBookmarkUrl || draggedBookmarkUrl === bookmark.url) return;
+              event.preventDefault();
+              const after = event.clientX > item.getBoundingClientRect().left + item.clientWidth / 2;
+              bookmarksElement.querySelectorAll('.drag-before, .drag-after').forEach((node) => node.classList.remove('drag-before', 'drag-after'));
+              item.classList.add(after ? 'drag-after' : 'drag-before');
+              event.dataTransfer.dropEffect = 'move';
+            });
+            item.addEventListener('dragleave', () => item.classList.remove('drag-before', 'drag-after'));
+            item.addEventListener('drop', (event) => {
+              event.preventDefault();
+              if (!draggedBookmarkUrl || draggedBookmarkUrl === bookmark.url) return;
+              const after = event.clientX > item.getBoundingClientRect().left + item.clientWidth / 2;
+              window.browser.reorderBookmark(draggedBookmarkUrl, bookmark.url, after);
+            });
            item.title = bookmark.url;
             const open = document.createElement('button');
             open.className = 'bookmark';
             open.type = 'button';
             open.title = bookmark.title || bookmark.url;
-             open.setAttribute('aria-label', bookmark.title || bookmark.url);
+              open.setAttribute('aria-label', bookmark.title || bookmark.url);
+              open.setAttribute('aria-keyshortcuts', 'Alt+ArrowLeft Alt+ArrowRight');
+              open.addEventListener('keydown', async (event) => {
+                if (!event.altKey || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+                event.preventDefault();
+                const index = state.bookmarks.findIndex((candidate) => candidate.url === bookmark.url);
+                const target = state.bookmarks[index + (event.key === 'ArrowLeft' ? -1 : 1)];
+                if (!target) return;
+                const moved = await window.browser.reorderBookmark(bookmark.url, target.url, event.key === 'ArrowRight');
+                if (moved) document.querySelector('#bookmark-reorder-announcement').textContent = `${bookmark.title || bookmark.url} moved ${event.key === 'ArrowLeft' ? 'before' : 'after'} ${target.title || target.url}`;
+              });
              const fallback = fallbackFavicon(bookmark.url);
              const addGenericIcon = () => {
                if (open.querySelector('.bookmark-favicon')) return;
@@ -323,9 +366,10 @@
             open.append(label);
             open.addEventListener('click', () => window.browser.navigate(bookmark.url));
             item.append(open);
-           bookmarksElement.append(item);
-         }
-       }
+            bookmarksElement.append(item);
+          }
+          if (focusedUrl) [...bookmarksElement.children].find((item) => item.title === focusedUrl)?.querySelector('.bookmark').focus({ preventScroll: true });
+        }
        function hideSuggestions() {
          suggestionRequest += 1;
          clearTimeout(suggestionTimer);

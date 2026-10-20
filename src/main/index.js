@@ -121,7 +121,9 @@ const ADDRESS_OVERLAY_SCRIPT = `
     let suggestionTimer;
     let suggestions = [];
     let selectedSuggestionIndex = -1;
-    input.value = location.href.startsWith('file:') ? '' : location.href;
+    const internalLocalPage = [${JSON.stringify(BOOKMARKS_PAGE_URL)}, ${JSON.stringify(KEYBOARD_SHORTCUTS_PAGE_URL)}]
+      .some((url) => location.href.startsWith(url));
+    input.value = location.href.startsWith('file:') || internalLocalPage ? '' : location.href;
     requestAnimationFrame(() => { input.focus(); input.select(); });
     shadow.addEventListener('keydown', (event) => { if (event.key === 'Escape') close(); });
     backdrop.addEventListener('click', (event) => { if (event.target === backdrop) close(); });
@@ -262,7 +264,11 @@ function tabState() {
   return {
     activeTabId,
     addressAccentColor,
-    tabs: tabs.map(({ id, title, url, loading }) => ({ id, title, url, loading, restricted: url.startsWith(RESTRICTED_PAGE_URL) })),
+    tabs: tabs.map(({ id, title, url, loading }) => ({
+      id, title, url, loading,
+      restricted: url.startsWith(RESTRICTED_PAGE_URL),
+      internalPage: url.startsWith(BOOKMARKS_PAGE_URL) || url.startsWith(KEYBOARD_SHORTCUTS_PAGE_URL),
+    })),
     bookmarks,
     bookmarksVisible,
     adBlocker: {
@@ -463,6 +469,21 @@ function toggleActiveBookmark() {
   else bookmarks.splice(index, 1);
   saveBookmarks();
   notifyToolbar();
+}
+
+function reorderBookmark(sourceUrl, targetUrl, placeAfter) {
+  if (typeof sourceUrl !== 'string' || typeof targetUrl !== 'string' || typeof placeAfter !== 'boolean') return false;
+  if (normalizeBookmarkUrl(sourceUrl) !== sourceUrl || normalizeBookmarkUrl(targetUrl) !== targetUrl || sourceUrl === targetUrl) return false;
+  const sourceIndex = bookmarks.findIndex((bookmark) => bookmark.url === sourceUrl);
+  const targetIndex = bookmarks.findIndex((bookmark) => bookmark.url === targetUrl);
+  if (sourceIndex === -1 || targetIndex === -1) return false;
+
+  const [bookmark] = bookmarks.splice(sourceIndex, 1);
+  const nextTargetIndex = bookmarks.findIndex((candidate) => candidate.url === targetUrl);
+  bookmarks.splice(nextTargetIndex + (placeAfter ? 1 : 0), 0, bookmark);
+  saveBookmarks();
+  notifyToolbar();
+  return true;
 }
 
 function applyDefaultScrollbar(webContents) {
@@ -800,6 +821,10 @@ function createWindow() {
 }
 
 ipcMain.handle('browser:get-state', () => tabState());
+ipcMain.handle('browser:reorder-bookmarks', (event, sourceUrl, targetUrl, placeAfter) => {
+  if (event.sender !== toolbarView?.webContents) return false;
+  return reorderBookmark(sourceUrl, targetUrl, placeAfter);
+});
 ipcMain.handle('browser:suggest', async (event, query) => {
   if (event.sender !== toolbarView?.webContents || typeof query !== 'string' || query.length > 256) return [];
   return getSuggestions(query);

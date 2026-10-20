@@ -130,6 +130,15 @@ for (const edition of ['personal', 'institutional']) {
       await eventually(async () => (await state()).tabs.some((tab) => tab.url.includes('/bookmarks/index.html')), true, 'bookmark tab completes local navigation');
       const bookmarksTab = (await state()).tabs.find((tab) => tab.url.includes('/bookmarks/index.html'));
       assert.ok(bookmarksTab, 'bookmark page uses a distinct internal tab');
+      await dom(() => {
+        const address = document.querySelector('#address');
+        address.value = 'stale-address.example';
+        address.focus();
+      });
+      await dom((id) => window.browser.selectTab(id), bookmarksTab.id);
+      await eventually(async () => dom(() => document.querySelector('#address').value), '', 'dedicated bookmark page URL is hidden from toolbar address field');
+      const mainSource = await fs.readFile(path.join(ROOT, 'src/main/index.js'), 'utf8');
+      assert.match(mainSource, /location\.href\.startsWith\('file:'\) \|\| internalLocalPage/, 'centered overlay keeps every file URL blank as well as the dedicated local pages');
       const fullBookmarkPage = await electron.evaluate(({ webContents }) => {
         const page = webContents.getAllWebContents().find((wc) => wc.getURL().endsWith('/bookmarks/index.html'));
         return page.executeJavaScript(`(async () => ({ labels: [...document.querySelectorAll('#bookmarks button')].map((button) => button.querySelector('.bookmark-title')?.textContent), icons: [...document.querySelectorAll('#bookmarks button')].map((button) => ({ src: button.dataset.faviconSrc, rendered: button.querySelector('.bookmark-icon')?.tagName ?? null })), bridge: typeof window.claBrowserLocalPage?.getBookmarks, unsafeNavigation: await window.claBrowserLocalPage.openBookmark('javascript:alert(1)') }))()`);
@@ -155,6 +164,13 @@ for (const edition of ['personal', 'institutional']) {
       await eventually(async () => (await state()).tabs.some((tab) => tab.url.includes('/keyboard-shortcuts/index.html')), true, 'keyboard tab completes local navigation');
       const keyboardTab = (await state()).tabs.find((tab) => tab.url.includes('/keyboard-shortcuts/index.html'));
       assert.ok(keyboardTab, 'keyboard reference uses a distinct internal tab');
+      await dom(() => {
+        const address = document.querySelector('#address');
+        address.value = 'stale-address.example';
+        address.focus();
+      });
+      await dom((id) => window.browser.selectTab(id), keyboardTab.id);
+      await eventually(async () => dom(() => document.querySelector('#address').value), '', 'keyboard shortcuts URL is hidden from toolbar address field');
       await dom((id) => window.browser.closeTab(id), keyboardTab.id);
       await eventually(async () => (await state()).tabs.length, baselineTabCount);
       const shortcutsPage = await electron.evaluate(({ webContents }, id) => webContents.fromId(id).executeJavaScript(`(async () => {
@@ -528,10 +544,56 @@ for (const edition of ['personal', 'institutional']) {
        await eventually(async () => (await state()).tabs[0].url, addedBookmarkUrl);
        await dom(() => window.browser.action('toggle-bookmark'));
        await eventually(async () => (await state()).bookmarks.length, bookmarkCount + 1);
-       assert.deepEqual((await state()).bookmarks.map(({ url }) => url), [
-         ...bookmarks.map(({ url }) => url), addedBookmarkUrl,
-       ], 'a new bookmark appends without changing the existing bookmark order');
-       const exited = electron.waitForEvent('close');
+        assert.deepEqual((await state()).bookmarks.map(({ url }) => url), [
+          ...bookmarks.map(({ url }) => url), addedBookmarkUrl,
+        ], 'a new bookmark appends without changing the existing bookmark order');
+        const initialBookmarkOrder = (await state()).bookmarks.map(({ url }) => url);
+        await dom((sourceUrl, targetUrl) => {
+          const source = [...document.querySelectorAll('.bookmark-item')].find((item) => item.title === sourceUrl);
+          const target = [...document.querySelectorAll('.bookmark-item')].find((item) => item.title === targetUrl);
+          const transfer = new DataTransfer();
+          source.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: transfer }));
+          target.dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer: transfer, clientX: target.getBoundingClientRect().right }));
+          source.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: transfer }));
+        }, initialBookmarkOrder[0], initialBookmarkOrder[2]);
+        await eventually(async () => (await state()).bookmarks.map(({ url }) => url), [
+          ...initialBookmarkOrder.slice(1, 3), initialBookmarkOrder[0], ...initialBookmarkOrder.slice(3),
+        ], 'pointer drag moves a bookmark after its target');
+        const pointerOrder = (await state()).bookmarks.map(({ url }) => url);
+        assert.deepEqual(JSON.parse(await fs.readFile(path.join(profile, 'bookmarks.json'), 'utf8')).map(({ url }) => url), pointerOrder,
+          'pointer reorder persists the canonical bookmark array');
+        assert.deepEqual(await dom(() => ({
+          keyboardMove: document.querySelector('.bookmark')?.getAttribute('aria-keyshortcuts'),
+          liveRegion: Boolean(document.querySelector('#bookmark-reorder-announcement[aria-live="polite"]')),
+        })), { keyboardMove: 'Alt+ArrowLeft Alt+ArrowRight', liveRegion: true }, 'bookmark reorder exposes an announced keyboard affordance');
+        const keyboardBookmark = pointerOrder[2];
+        await dom((url) => {
+          const item = [...document.querySelectorAll('.bookmark-item')].find((node) => node.title === url);
+          const button = item.querySelector('.bookmark');
+          button.focus();
+          button.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', altKey: true, bubbles: true, cancelable: true }));
+        }, keyboardBookmark);
+        const keyboardOrder = [...pointerOrder];
+        const keyboardIndex = keyboardOrder.indexOf(keyboardBookmark);
+        [keyboardOrder[keyboardIndex - 1], keyboardOrder[keyboardIndex]] = [keyboardOrder[keyboardIndex], keyboardOrder[keyboardIndex - 1]];
+        await eventually(async () => (await state()).bookmarks.map(({ url }) => url), keyboardOrder, 'keyboard move reorders a focused bookmark');
+        assert.equal(await dom(() => document.querySelector('#bookmark-reorder-announcement').textContent.includes('moved')), true,
+          'keyboard reorder announces the completed move');
+        assert.equal(await dom((url) => document.activeElement.closest('.bookmark-item')?.title === url, keyboardBookmark), true,
+          'keyboard reordering retains focus on the moved bookmark');
+        assert.deepEqual((await state()).bookmarks.slice(0, 9).map(({ url }) => url), keyboardOrder.slice(0, 9),
+          'the reordered first nine bookmarks retain their Atajos ordering');
+        assert.deepEqual(JSON.parse(await fs.readFile(path.join(profile, 'bookmarks.json'), 'utf8')).map(({ url }) => url), keyboardOrder,
+          'keyboard reorder persists the canonical bookmark array');
+        const beforeInvalidRequest = await state();
+        assert.equal(await dom((url) => window.browser.reorderBookmark('javascript:alert(1)', url, true), keyboardOrder[0]), false,
+          'malformed bookmark identities are rejected');
+        assert.equal(await dom((url) => window.browser.reorderBookmark(url, url, true), keyboardOrder[0]), false,
+          'identical bookmark identities are rejected');
+        assert.equal(await dom((url) => window.browser.reorderBookmark(url, 'https://missing.example/', true), keyboardOrder[0]), false,
+          'missing bookmark identities are rejected');
+        assert.deepEqual(await state(), beforeInvalidRequest, 'invalid reorder requests leave toolbar state unchanged');
+        const exited = electron.waitForEvent('close');
       await dom((id) => window.browser.closeTab(id), remaining.at(-1));
       await exited;
     } finally {
