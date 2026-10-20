@@ -64,9 +64,17 @@ The new-tab page needs a compact way to open saved bookmarks, discover browser k
   - Checks: add Electron integration coverage for both actions in both editions, full bookmark ordering and same-tab navigation, shortcut-reference parity, scoped IPC, institutional favicon sizing, and parallel test focus; run `node --test test/toolbar-tabs.test.js` and parallel `npm test`.
   - Verification: RED observed in both editions because the launcher lacked “Ver todos los marcadores”; the institutional favicon probe also observed 280px/absolute styling instead of 24px/static. After fixes, writer reports `node --test test/toolbar-tabs.test.js` and parallel `npm test` passed (2 and 42 tests respectively); parent repeated the focused test successfully (2 tests), and `git diff --check` passed. An earlier parallel run failed once at `test/toolbar-tabs.test.js:495`; a bounded native-focus wait now allows restoration without changing test concurrency.
   - Implementation evidence: panel actions open separate local tabs; bookmarks and keyboard pages follow the Restricted dark-page pattern; bookmark data/navigation handlers require the active WebContents, exact local page URL, and normalized saved bookmark URL; institutional image rules target `.brand-logo`, leaving favicons 24px and static.
-  - Commit evidence: pending work-unit commit.
-  - Review outcome: the pre-commit assessment was unassessable because the two new renderer pages were untracked; committed-candidate assessment pending.
+  - Commit evidence: `ef17285` (`feat(new-tab): add dedicated bookmarks and shortcut views`).
+  - Review outcome: the pre-commit assessment was unassessable because the two new renderer pages were untracked; committed-candidate assessment from the feature base returned medium risk with `review_due: true` (`slice_budget_reached`).
   - Route: delegated direct. Trigger: multiple new local views, IPC/preload access, launcher changes, and cross-edition integration tests.
+- [x] NT-6 — Show each saved bookmark's favicon on the full bookmarks page.
+  - Acceptance: every row of the bookmarks page renders an icon resolved from the saved URL (Gmail's icon, otherwise the origin favicon), with a generic fallback when the origin is not HTTP(S) or the image fails; names and URLs keep their order and accessible labels; both editions work.
+  - Checks: extend the Electron integration assertions first and observe RED; run `node --test test/toolbar-tabs.test.js` and `npm test`.
+  - Verification: RED observed in both editions because the page had no title class and no icons. After implementation, `node --test test/toolbar-tabs.test.js` passed (2 tests) and `npm test` passed (42 tests); `git diff --check` passed.
+  - Implementation evidence: shared `fallbackFavicon` rule (Gmail special case, otherwise `new URL('/favicon.ico', page)`), 20px icon column with a generic circular fallback, and `data-favicon-src` retained per row for deterministic coverage.
+  - Commit evidence: pending work-unit commit.
+  - Review outcome: pending committed assessment.
+  - Route: delegated direct. Trigger: renderer layout change plus cross-edition integration assertions.
 
 ## Next step
-Create the NT-5 work-unit commit, record the committed assessment, and close the feature task.
+Record the NT-6 committed assessment and close the feature task.

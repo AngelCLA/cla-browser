@@ -14,10 +14,12 @@
       .intro { margin: 18px 0 28px; color: var(--muted); font-size: 15px; line-height: 1.7; }
       ul { margin: 0; padding: 0; border-top: 1px solid var(--border); list-style: none; }
       li { border-bottom: 1px solid var(--border); }
-      button { width: 100%; padding: 16px 0; border: 0; background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+      button { display: grid; width: 100%; padding: 16px 0; border: 0; background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; grid-template-columns: 20px minmax(0, 1fr); align-items: center; gap: 12px; }
       button:hover, button:focus-visible { color: white; outline: 2px solid #71717a; outline-offset: 2px; }
       button span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       button .url { margin-top: 5px; color: var(--muted); font-size: 12px; }
+      .bookmark-icon { width: 20px; height: 20px; }
+      .bookmark-icon.fallback { width: 14px; height: 14px; margin: 0 3px; border: 1px solid currentColor; border-radius: 50%; opacity: .65; }
       .empty { color: var(--muted); }
       @media (max-width: 640px) { main { padding-top: 56px; } }
     </style>
@@ -30,6 +32,15 @@
       <ul id="bookmarks" aria-label="Todos los marcadores"></ul>
     </main>
     <script>
+      function fallbackFavicon(url) {
+        try {
+          const page = new URL(url);
+          if (page.hostname === 'mail.google.com') return 'https://ssl.gstatic.com/ui/v1/icons/mail/rfr/gmail.ico';
+          return page.protocol === 'http:' || page.protocol === 'https:' ? new URL('/favicon.ico', page).toString() : '';
+        } catch {
+          return '';
+        }
+      }
       (async () => {
         const list = document.querySelector('#bookmarks');
         const bookmarks = await window.claBrowserLocalPage.getBookmarks();
@@ -45,12 +56,35 @@
           const button = document.createElement('button');
           button.type = 'button';
           button.setAttribute('aria-label', `${bookmark.title} — ${bookmark.url}`);
+          const fallback = fallbackFavicon(bookmark.url);
+          button.dataset.faviconSrc = fallback;
+          const addGenericIcon = () => {
+            const generic = document.createElement('span');
+            generic.className = 'bookmark-icon fallback';
+            generic.setAttribute('aria-hidden', 'true');
+            button.prepend(generic);
+          };
+          if (fallback) {
+            const icon = document.createElement('img');
+            icon.className = 'bookmark-icon';
+            icon.alt = '';
+            icon.setAttribute('aria-hidden', 'true');
+            icon.src = fallback;
+            icon.addEventListener('error', () => {
+              icon.remove();
+              addGenericIcon();
+            });
+            button.append(icon);
+          } else addGenericIcon();
+          const text = document.createElement('span');
           const title = document.createElement('span');
+          title.className = 'bookmark-title';
           title.textContent = bookmark.title;
           const url = document.createElement('span');
           url.className = 'url';
           url.textContent = bookmark.url;
-          button.append(title, url);
+          text.append(title, url);
+          button.append(text);
           button.addEventListener('click', () => window.claBrowserLocalPage.openBookmark(bookmark.url));
           item.append(button);
           list.append(item);

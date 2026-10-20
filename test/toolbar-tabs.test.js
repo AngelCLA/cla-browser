@@ -132,11 +132,13 @@ for (const edition of ['personal', 'institutional']) {
       assert.ok(bookmarksTab, 'bookmark page uses a distinct internal tab');
       const fullBookmarkPage = await electron.evaluate(({ webContents }) => {
         const page = webContents.getAllWebContents().find((wc) => wc.getURL().endsWith('/bookmarks/index.html'));
-        return page.executeJavaScript(`(async () => ({ labels: [...document.querySelectorAll('#bookmarks button')].map((button) => button.querySelector('span')?.textContent), bridge: typeof window.claBrowserLocalPage?.getBookmarks, unsafeNavigation: await window.claBrowserLocalPage.openBookmark('javascript:alert(1)') }))()`);
+        return page.executeJavaScript(`(async () => ({ labels: [...document.querySelectorAll('#bookmarks button')].map((button) => button.querySelector('.bookmark-title')?.textContent), icons: [...document.querySelectorAll('#bookmarks button')].map((button) => ({ src: button.dataset.faviconSrc, rendered: button.querySelector('.bookmark-icon')?.tagName ?? null })), bridge: typeof window.claBrowserLocalPage?.getBookmarks, unsafeNavigation: await window.claBrowserLocalPage.openBookmark('javascript:alert(1)') }))()`);
       });
       assert.equal(fullBookmarkPage.bridge, 'function');
       assert.equal(fullBookmarkPage.unsafeNavigation, false, 'bookmark page rejects URLs outside the saved list');
       assert.deepEqual(fullBookmarkPage.labels, bookmarks.map(({ title }) => title), 'all saved bookmarks retain their order beyond nine entries');
+      assert.deepEqual(fullBookmarkPage.icons.map(({ src }) => src), bookmarks.map(({ url }) => new URL('/favicon.ico', url).toString()), 'the full bookmark page resolves a favicon for every saved bookmark');
+      assert.ok(fullBookmarkPage.icons.every(({ rendered }) => rendered === 'IMG' || rendered === 'SPAN'), 'every bookmark row renders an icon element');
       const unauthorizedLocalPageCalls = await electron.evaluate(({ webContents }, id) => webContents.fromId(id).executeJavaScript(`(async () => ({ bookmarks: await window.claBrowserLocalPage.getBookmarks(), open: await window.claBrowserShortcuts.openPage('bookmarks') }))()`), newTab.webContentsId);
       assert.deepEqual(unauthorizedLocalPageCalls, { bookmarks: [], open: false }, 'inactive pages cannot request local bookmark data or open local pages');
       const targetBookmark = bookmarksTab.id;
