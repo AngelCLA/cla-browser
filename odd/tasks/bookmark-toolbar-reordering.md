@@ -26,9 +26,9 @@ Saved bookmarks are ordered in the toolbar, but users currently cannot change th
   - Checks: add integration coverage first and observe RED for both editions, drag and keyboard moves, persisted order after reload/reload state, invalid reorder requests, and unchanged bookmark navigation; run `node --test test/toolbar-tabs.test.js` and `npm test`.
   - Verification: RED observed in both editions because bookmark drag left the stored order unchanged. After implementation, writer reports focused tests passed (2/2) and `npm test` passed (42/42); parent repeated `node --test test/toolbar-tabs.test.js` successfully (2/2), and `git diff --check` passed.
   - Implementation evidence: renderer supports before/after drag targets and Alt+ArrowLeft/Right keyboard moves with live announcements and focus restoration; main process validates canonical saved URLs, persists the existing bookmark array, and notifies state. Tests cover both editions, persistence, malformed/identical/missing identities, ordering, and append behavior.
-  - Commit evidence: pending work-unit commit.
-  - Review outcome: pending committed assessment against the previous reviewed boundary.
+  - Commit evidence: `4379b56` (`feat(toolbar): reorder bookmarks and hide local URLs`).
+  - Review outcome: RDD on; committed base-diff assessment against `ea9f48c` returned medium risk, `review_due: false`, reason `under_budget` (200 changed lines); this slice remains pending until the delivery budget is reached.
   - Route: delegated direct. Trigger: behavior crosses renderer, preload, main-process persistence, and integration tests.
 
 ## Next step
-Record the BM-1 commit and committed assessment, then close this feature task.
+Feature implementation and verification complete; BM-1 is closed.
