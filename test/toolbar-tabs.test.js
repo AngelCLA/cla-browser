@@ -125,6 +125,7 @@ for (const edition of ['personal', 'institutional']) {
         }
         const label = panel?.textContent;
         const entry = panel?.querySelector('button');
+        const shortcutDisclosure = panel?.querySelector('details');
         entry?.click();
         const favicon = entry?.querySelector('.shortcut-favicon');
         const launcherStyles = [...document.styleSheets].flatMap((sheet) => [...sheet.cssRules])
@@ -132,12 +133,49 @@ for (const edition of ['personal', 'institutional']) {
           .map((rule) => ({ selector: rule.selectorText, background: rule.style.backgroundColor, borderColor: rule.style.borderColor, outline: rule.style.outline }));
         return {
           expanded: button.getAttribute('aria-expanded'), label, unsafeAccepted,
+          shortcutEntry: entry && {
+            text: entry.textContent.trim(), ariaLabel: entry.getAttribute('aria-label'), title: entry.title,
+            columns: getComputedStyle(document.querySelector('.shortcuts-list')).gridTemplateColumns.split(' ').length,
+          },
+          keyboardReference: shortcutDisclosure && {
+            tag: shortcutDisclosure.tagName,
+            open: shortcutDisclosure.open,
+            summary: shortcutDisclosure.querySelector('summary')?.textContent.trim(),
+            entries: [...shortcutDisclosure.querySelectorAll('li')].map((item) =>
+              item.closest('ul').previousElementSibling.textContent + ' — ' + item.querySelector('kbd').textContent + ' — ' + item.querySelector('span').textContent),
+          },
           favicon: favicon && { tag: favicon.tagName, src: entry.dataset.faviconSrc, alt: favicon.getAttribute('alt'), ariaHidden: favicon.getAttribute('aria-hidden') },
           launcherStyles,
         };
       })()`), newTab.webContentsId);
       assert.equal(shortcutsPage.expanded, 'true');
-      assert.match(shortcutsPage.label, /Saved shortcut/);
+       assert.doesNotMatch(shortcutsPage.label, /Saved shortcut|example\.test/, 'saved names and URLs are not visible');
+       assert.deepEqual(shortcutsPage.shortcutEntry, {
+         text: '', ariaLabel: 'Saved shortcut', title: 'Saved shortcut — https://example.test/shortcut',
+         columns: 4,
+       });
+       assert.deepEqual(shortcutsPage.keyboardReference, {
+         tag: 'DETAILS', open: false, summary: 'Keyboard shortcuts',
+         entries: [
+           'Navigation — Ctrl/Cmd+L — Focus the address bar',
+           'Navigation — Ctrl/Cmd+[ / Ctrl/Cmd+] — Go back / forward',
+           'Navigation — Ctrl/Cmd+H — Show history',
+           'Tabs — Ctrl/Cmd+T — Open a new tab',
+           'Tabs — Ctrl/Cmd+W — Close the current tab',
+           'Tabs — Ctrl/Cmd+Shift+T — Reopen the last closed tab',
+           'Tabs — Ctrl/Cmd+Tab / Ctrl/Cmd+Shift+Tab — Select the next / previous tab',
+           'Tabs — Ctrl/Cmd+1–8 — Select tab 1–8',
+           'Tabs — Ctrl/Cmd+9 — Select the last tab',
+           'Page — Ctrl/Cmd+R / F5 — Reload the page',
+           'Page — Ctrl/Cmd+Shift+R — Reload ignoring cache',
+           'Page — Ctrl/Cmd+P — Print the page',
+           'Window and view — F11 — Toggle fullscreen',
+           'Window and view — Ctrl/Cmd+plus/equal / minus / 0 — Zoom in / out / reset',
+           'Bookmarks — Ctrl/Cmd+D — Add or remove a bookmark',
+           'Bookmarks — Ctrl/Cmd+Shift+B — Toggle the bookmarks bar',
+           'Developer — Ctrl/Cmd+Shift+I / F12 — Toggle developer tools',
+         ],
+       });
       assert.equal(shortcutsPage.unsafeAccepted, false, 'untrusted non-bookmark destinations are rejected');
       assert.deepEqual(shortcutsPage.favicon, {
         tag: shortcutsPage.favicon?.tag === 'IMG' ? 'IMG' : 'SPAN',
