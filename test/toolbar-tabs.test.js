@@ -21,9 +21,12 @@ for (const edition of ['personal', 'institutional']) {
     const output = path.join(ROOT, '.toolbar-tabs-runtime', edition);
     await fs.mkdir(output, { recursive: true });
     const profile = await fs.mkdtemp(path.join(output, 'run-'));
-    await fs.writeFile(path.join(profile, 'bookmarks.json'), JSON.stringify([
-      { title: 'Saved shortcut', url: 'https://example.test/shortcut' },
-    ]));
+    const bookmarkCount = edition === 'personal' ? 12 : 5;
+    const bookmarks = Array.from({ length: bookmarkCount }, (_, index) => ({
+      title: `Saved shortcut ${index + 1}`,
+      url: `https://example.test/shortcut-${index + 1}`,
+    }));
+    await fs.writeFile(path.join(profile, 'bookmarks.json'), JSON.stringify(bookmarks));
     // Keep Playwright artifacts and Electron temporary data inside the approved output.
     const previousTemp = { TEMP: process.env.TEMP, TMP: process.env.TMP };
     process.env.TEMP = profile;
@@ -111,13 +114,13 @@ for (const edition of ['personal', 'institutional']) {
       assert.deepEqual(await electron.evaluate(async ({ webContents }, id) => {
         const page = webContents.fromId(id);
         return page.executeJavaScript(`({
-          button: document.querySelector('[aria-label="Open shortcuts"]')?.tagName,
+          button: document.querySelector('[aria-label="Abrir atajos"]')?.tagName,
           bridge: typeof window.claBrowserShortcuts?.getBookmarks,
         })`);
       }, newTab.webContentsId), { button: 'BUTTON', bridge: 'function' });
       const shortcutsPage = await electron.evaluate(({ webContents }, id) => webContents.fromId(id).executeJavaScript(`(async () => {
         const unsafeAccepted = await window.claBrowserShortcuts.openBookmark('javascript:alert(1)');
-        const button = document.querySelector('[aria-label="Open shortcuts"]');
+        const button = document.querySelector('[aria-label="Abrir atajos"]');
         button.click();
         const panel = document.querySelector('#shortcuts-panel');
         for (let attempt = 0; attempt < 100 && !panel.querySelector('button'); attempt += 1) {
@@ -125,6 +128,7 @@ for (const edition of ['personal', 'institutional']) {
         }
         const label = panel?.textContent;
         const expanded = button.getAttribute('aria-expanded');
+        const bookmarkEntries = [...panel.querySelectorAll('.shortcut-entry')].map((item) => item.getAttribute('aria-label'));
         const entry = panel?.querySelector('button');
         const shortcutDisclosure = panel?.querySelector('details');
         shortcutDisclosure?.querySelector('summary').click();
@@ -150,6 +154,10 @@ for (const edition of ['personal', 'institutional']) {
           .map((rule) => ({ selector: rule.selectorText, background: rule.style.backgroundColor, borderColor: rule.style.borderColor, outline: rule.style.outline }));
         return {
           expanded, label, unsafeAccepted,
+          launcherLabel: button.getAttribute('aria-label'),
+          panelLabel: panel.getAttribute('aria-label'),
+          heading: panel.querySelector('h2')?.textContent.trim(),
+          bookmarkEntries,
           staysOpenAfterDisclosure, staysOpenAfterShortcut, focusedOutside, dismissedOutside, focusPreserved,
           escapeCloses, escapeRestoresFocus,
           scrollbarStyles: [...document.styleSheets].flatMap((sheet) => [...sheet.cssRules])
@@ -171,6 +179,11 @@ for (const edition of ['personal', 'institutional']) {
         };
       })()`), newTab.webContentsId);
       assert.equal(shortcutsPage.expanded, 'true');
+      assert.equal(shortcutsPage.launcherLabel, 'Abrir atajos');
+      assert.equal(shortcutsPage.panelLabel, 'Atajos del navegador');
+      assert.equal(shortcutsPage.heading, 'Atajos');
+      assert.equal(shortcutsPage.keyboardReference.summary, 'Atajos de teclado');
+      assert.deepEqual(shortcutsPage.bookmarkEntries, bookmarks.slice(0, 9).map(({ title }) => title), 'bookmarks remain in bar order and are capped at nine');
        assert.equal(shortcutsPage.staysOpenAfterDisclosure, true, 'interacting with the disclosure keeps the panel open');
        assert.equal(shortcutsPage.staysOpenAfterShortcut, true, 'activating a shortcut keeps the panel open');
        assert.equal(shortcutsPage.focusedOutside, true);
@@ -185,11 +198,11 @@ for (const edition of ['personal', 'institutional']) {
        ]);
        assert.doesNotMatch(shortcutsPage.label, /Saved shortcut|example\.test/, 'saved names and URLs are not visible');
        assert.deepEqual(shortcutsPage.shortcutEntry, {
-         text: '', ariaLabel: 'Saved shortcut', title: 'Saved shortcut — https://example.test/shortcut',
+         text: '', ariaLabel: 'Saved shortcut 1', title: 'Saved shortcut 1 — https://example.test/shortcut-1',
          columns: 4,
        });
        assert.deepEqual(shortcutsPage.keyboardReference, {
-         tag: 'DETAILS', open: false, summary: 'Keyboard shortcuts',
+         tag: 'DETAILS', open: false, summary: 'Atajos de teclado',
          entries: [
            'Navigation — Ctrl/Cmd+L — Focus the address bar',
            'Navigation — Ctrl/Cmd+[ / Ctrl/Cmd+] — Go back / forward',
@@ -222,7 +235,7 @@ for (const edition of ['personal', 'institutional']) {
         { selector: '.shortcuts-launcher:hover', background: 'rgb(39, 39, 42)', borderColor: 'rgb(113, 113, 122)', outline: '' },
         { selector: '.shortcuts-launcher:focus-visible', background: '', borderColor: '', outline: 'rgb(161, 161, 170) solid 2px' },
       ]);
-      await eventually(async () => (await state()).tabs[0].url, 'https://example.test/shortcut');
+      await eventually(async () => (await state()).tabs[0].url, 'https://example.test/shortcut-1');
       assert.deepEqual(await arrows(), hiddenArrows, 'a single tab reserves no arrow space');
       await assertAddAdjacent();
       assert.deepEqual(await dom(() => {
@@ -481,9 +494,17 @@ for (const edition of ['personal', 'institutional']) {
       await eventually(arrows, hiddenArrows, 'closing tabs until they fit removes both controls');
       await assertAddAdjacent();
       assert.equal(await dom(() => document.querySelector('#tab-list').getBoundingClientRect().left), 0);
-      await dom(() => document.querySelector('#tabs-next').focus());
-      assert.equal(await dom(() => document.activeElement.id === 'tabs-next'), false, 'hidden arrows cannot receive focus');
-      const exited = electron.waitForEvent('close');
+       await dom(() => document.querySelector('#tabs-next').focus());
+       assert.equal(await dom(() => document.activeElement.id === 'tabs-next'), false, 'hidden arrows cannot receive focus');
+       const addedBookmarkUrl = `https://example.test/added-${edition}`;
+       await dom((url) => window.browser.navigate(url), addedBookmarkUrl);
+       await eventually(async () => (await state()).tabs[0].url, addedBookmarkUrl);
+       await dom(() => window.browser.action('toggle-bookmark'));
+       await eventually(async () => (await state()).bookmarks.length, bookmarkCount + 1);
+       assert.deepEqual((await state()).bookmarks.map(({ url }) => url), [
+         ...bookmarks.map(({ url }) => url), addedBookmarkUrl,
+       ], 'a new bookmark appends without changing the existing bookmark order');
+       const exited = electron.waitForEvent('close');
       await dom((id) => window.browser.closeTab(id), remaining.at(-1));
       await exited;
     } finally {

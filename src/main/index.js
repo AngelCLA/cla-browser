@@ -457,7 +457,7 @@ function toggleActiveBookmark() {
   if (!url || url === BLANK_PAGE_URL) return;
 
   const index = bookmarks.findIndex((bookmark) => bookmark.url === url);
-  if (index === -1) bookmarks.unshift({ url, title: tab.title || url });
+  if (index === -1) bookmarks.push({ url, title: tab.title || url });
   else bookmarks.splice(index, 1);
   saveBookmarks();
   notifyToolbar();

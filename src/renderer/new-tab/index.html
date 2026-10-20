@@ -53,14 +53,14 @@
   <body>
     <main>
       <img src="../../assets/cla-browser.svg" alt="CLA Browser" />
-      <button class="shortcuts-launcher" type="button" aria-label="Open shortcuts" aria-expanded="false" aria-controls="shortcuts-panel">
+      <button class="shortcuts-launcher" type="button" aria-label="Abrir atajos" aria-expanded="false" aria-controls="shortcuts-panel">
         <span class="launcher-dots" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
       </button>
-      <section class="shortcuts-panel" id="shortcuts-panel" aria-label="Browser shortcuts" hidden>
-        <h2>Shortcuts</h2>
+      <section class="shortcuts-panel" id="shortcuts-panel" aria-label="Atajos del navegador" hidden>
+        <h2>Atajos</h2>
         <div class="shortcuts-list"></div>
         <details class="keyboard-reference">
-          <summary>Keyboard shortcuts</summary>
+          <summary>Atajos de teclado</summary>
           <h3>Navigation</h3>
           <ul>
             <li><kbd>Ctrl/Cmd+L</kbd><span>Focus the address bar</span></li>
@@ -133,12 +133,12 @@
         if (!Array.isArray(bookmarks) || !bookmarks.length) {
           const empty = document.createElement('p');
           empty.className = 'shortcuts-empty';
-          empty.textContent = 'No saved shortcuts yet.';
+          empty.textContent = 'Aún no hay atajos guardados.';
           shortcutsList.append(empty);
           return;
         }
         shortcutButtons = [];
-        for (const bookmark of bookmarks) {
+        for (const bookmark of bookmarks.slice(0, 9)) {
           const entry = document.createElement('button');
           entry.className = 'shortcut-entry';
           entry.type = 'button';
