@@ -48,14 +48,14 @@ The new-tab page needs a compact way to open saved bookmarks, discover browser k
   - Commit evidence: `a5fa9e4` (`feat(new-tab): dismiss shortcuts panel on outside click`).
   - Review outcome: RDD on; assessment from `a25c69e2f28bb2efa673d7d2861c26863271bfdd` returned medium risk, `review_due: false`, reason `under_budget` (340 changed lines).
   - Route: delegated direct. Trigger: implementation spans renderer behavior and styles plus integration coverage.
-- [ ] NT-4 — Localize the panel as “Atajos,” show up to the first nine favorites, and append newly added bookmarks.
+- [x] NT-4 — Localize the panel as “Atajos,” show up to the first nine favorites, and append newly added bookmarks.
   - Acceptance: all visible “Shortcuts” labels and related accessible names are Spanish; the panel shows the first nine saved bookmarks in bookmarks-bar order, or all entries if fewer than nine exist; newly added bookmarks are appended to the end without reordering existing entries; outside-dismissal, keyboard reference, and icon-only behavior remain intact.
   - Checks: add deterministic integration coverage for more than nine entries, fewer than nine entries, and adding a bookmark at the end; verify order and localized labels, then run `node --test test/toolbar-tabs.test.js` and `npm test`.
   - Verification: RED observed in both editions because a new bookmark appeared first. Writer reports `node --test test/toolbar-tabs.test.js` passed (2 tests) and `npm test` passed (42 tests); parent repeated the focused test (2 tests), `git diff --check` passed, and pre-commit assessment returned medium risk, `review_due: false`, `under_budget` (78 changed lines).
   - Implementation evidence: new bookmarks append with `bookmarks.push`, existing normalized order is preserved, the renderer limits display to `bookmarks.slice(0, 9)`, and all launcher labels are Spanish.
-  - Commit evidence: pending work-unit commit.
-  - Review outcome: pending committed-candidate assessment.
+  - Commit evidence: `7ddae21` (`feat(bookmarks): append new favorites`).
+  - Review outcome: RDD on; assessment from `a25c69e2f28bb2efa673d7d2861c26863271bfdd` returned medium risk, `review_due: false`, reason `under_budget` (379 changed lines).
   - Route: delegated direct. Trigger: bookmark insertion, UI copy, and bounded-list behavior span main-process code, renderer, and integration coverage.
 
 ## Next step
-Complete NT-4 with focused tests, update this file and its Engram mirror, create the authorized work-unit commit, and assess the committed slice under RDD.
+NT-4 is complete. No further implementation is pending.
