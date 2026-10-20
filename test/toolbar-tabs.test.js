@@ -126,11 +126,30 @@ for (const edition of ['personal', 'institutional']) {
         const label = panel?.textContent;
         const entry = panel?.querySelector('button');
         entry?.click();
-        return { expanded: button.getAttribute('aria-expanded'), label, unsafeAccepted };
+        const favicon = entry?.querySelector('.shortcut-favicon');
+        const launcherStyles = [...document.styleSheets].flatMap((sheet) => [...sheet.cssRules])
+          .filter((rule) => rule.selectorText === '.shortcuts-launcher' || rule.selectorText === '.shortcuts-launcher:hover' || rule.selectorText === '.shortcuts-launcher:focus-visible')
+          .map((rule) => ({ selector: rule.selectorText, background: rule.style.backgroundColor, borderColor: rule.style.borderColor, outline: rule.style.outline }));
+        return {
+          expanded: button.getAttribute('aria-expanded'), label, unsafeAccepted,
+          favicon: favicon && { tag: favicon.tagName, src: entry.dataset.faviconSrc, alt: favicon.getAttribute('alt'), ariaHidden: favicon.getAttribute('aria-hidden') },
+          launcherStyles,
+        };
       })()`), newTab.webContentsId);
       assert.equal(shortcutsPage.expanded, 'true');
       assert.match(shortcutsPage.label, /Saved shortcut/);
       assert.equal(shortcutsPage.unsafeAccepted, false, 'untrusted non-bookmark destinations are rejected');
+      assert.deepEqual(shortcutsPage.favicon, {
+        tag: shortcutsPage.favicon?.tag === 'IMG' ? 'IMG' : 'SPAN',
+        src: 'https://example.test/favicon.ico',
+        alt: shortcutsPage.favicon?.tag === 'IMG' ? '' : null,
+        ariaHidden: shortcutsPage.favicon?.tag === 'SPAN' ? 'true' : null,
+      });
+      assert.deepEqual(shortcutsPage.launcherStyles, [
+        { selector: '.shortcuts-launcher', background: 'transparent', borderColor: 'transparent', outline: '' },
+        { selector: '.shortcuts-launcher:hover', background: 'rgb(39, 39, 42)', borderColor: 'rgb(113, 113, 122)', outline: '' },
+        { selector: '.shortcuts-launcher:focus-visible', background: '', borderColor: '', outline: 'rgb(161, 161, 170) solid 2px' },
+      ]);
       await eventually(async () => (await state()).tabs[0].url, 'https://example.test/shortcut');
       assert.deepEqual(await arrows(), hiddenArrows, 'a single tab reserves no arrow space');
       await assertAddAdjacent();
